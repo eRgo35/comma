@@ -1,3 +1,4 @@
+mod prompt;
 mod reply;
 
 fn main() {
