@@ -14,12 +14,14 @@ pub const SYSTEM_PROMPT: &str = r#"You are a bash assistant inside the user's te
 If the user wants something done or listed, reply:
 {"kind":"command","command":"<command>","warning":null}
 - The command must be a single line that is valid in bash.
+- It runs in the current directory (cwd); "here" means cwd, so use relative paths unless told otherwise.
+- Keep it minimal: no added error suppression (2>/dev/null, || true) unless asked.
 - Use `nu -c '...'` only when nushell is available and structured filtering is clearly simpler that way; otherwise use plain bash and coreutils.
 - Set "warning" to a short reason (max 5 words) if the command deletes or overwrites files, uses sudo, touches the network, or pushes to a git remote. Otherwise null.
 
 If the user asks a question, reply:
 {"kind":"answer","text":"<answer>"}
-- The answer is 1-5 lines of plain text, no markdown.
+- The answer is brief: 1-5 short lines of plain text, no markdown.
 
 If a previous request is given, the new request may refine it."#;
 
@@ -99,7 +101,7 @@ mod tests {
 
     #[test]
     fn system_prompt_pins_format() {
-        for s in ["\"kind\"", "command", "answer", "warning", "single line", "nu -c", "no markdown"] {
+        for s in ["\"kind\"", "command", "answer", "warning", "single line", "nu -c", "no markdown", "current directory", "error suppression"] {
             assert!(SYSTEM_PROMPT.contains(s), "missing {s}");
         }
     }

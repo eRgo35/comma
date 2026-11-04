@@ -91,7 +91,13 @@ pub fn complete(system: &str, user: &str) -> Result<String, String> {
 fn describe(e: &BackendError) -> String {
     match e {
         BackendError::NoKey => "no ANTHROPIC_API_KEY".into(),
-        BackendError::Http(s, _) => format!("API returned {s}"),
+        BackendError::Http(s, body) => {
+            let msg = serde_json::from_str::<Value>(body).ok();
+            match msg.as_ref().and_then(|v| v["error"]["message"].as_str()) {
+                Some(m) => format!("API returned {s}: {m}"),
+                None => format!("API returned {s}"),
+            }
+        }
         BackendError::Network(m) => format!("network error: {m}"),
         BackendError::Other(m) => m.lines().next().unwrap_or("").to_string(),
     }
