@@ -5,7 +5,5 @@
       "release-type": "rust",
       "package-name": "comma"
     }
-  },
-  "include-component-in-tag": false,
-  "bootstrap-sha": "5e9ba428a30d09743e0e080e0f6efd6d1715b7df"
+  }
 }

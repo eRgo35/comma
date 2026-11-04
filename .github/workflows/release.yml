@@ -47,7 +47,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.release-please.outputs.tag_name }}
         run: |
-          name="comma-${TAG}-${{ matrix.target }}"
+          name="comma-${TAG#comma-}-${{ matrix.target }}"
           mkdir "$name"
           cp "target/${{ matrix.target }}/release/comma" LICENSE README.md "$name/"
           tar czf "$name.tar.gz" "$name"
