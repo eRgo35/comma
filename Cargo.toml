@@ -2,6 +2,13 @@
 name = "comma"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+description = "Ask Claude for a shell command right at your bash prompt: type ,<what you want> and press Enter"
+license = "MIT"
+repository = "https://github.com/eRgo35/comma"
+readme = "README.md"
+keywords = ["bash", "shell", "claude", "cli", "llm"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 serde_json = "1"
