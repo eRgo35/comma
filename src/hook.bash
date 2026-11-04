@@ -3,6 +3,7 @@
 
 __comma_process() {
   __COMMA_HANDLED=0
+  (( ${__COMMA_PRIMARY:-1} )) || return 0  # continuation line (heredoc, open quote)
   [[ $READLINE_LINE == ,* ]] || return 0
   __COMMA_HANDLED=1
   local req="${READLINE_LINE#,}" out rc
@@ -20,14 +21,22 @@ __comma_process() {
 
 # Enter runs this hook, then whatever \C-x\C-a is bound to: accept-line for
 # normal lines, a no-op redraw for "," lines so the result waits for a second Enter.
+# Bound in every keymap so vi mode works too. The "$_" argument keeps $_ intact.
+__COMMA_KEYMAPS=(emacs vi-insert vi-command)
 __comma_hook() {
   __comma_process
-  if (( __COMMA_HANDLED )); then bind '"\C-x\C-a": redraw-current-line'
-  else bind '"\C-x\C-a": accept-line'; fi
+  local next=accept-line m
+  if (( __COMMA_HANDLED )); then next=redraw-current-line; else __COMMA_PRIMARY=0; fi
+  for m in "${__COMMA_KEYMAPS[@]}"; do bind -m "$m" "\"\C-x\C-a\": $next"; done
 }
 
 if [[ $- == *i* ]] && command -v comma >/dev/null; then
-  bind -x '"\C-x\C-c": __comma_hook'
-  bind '"\C-x\C-a": accept-line'
-  bind '"\C-m": "\C-x\C-c\C-x\C-a"'
+  # Only lines typed at the main prompt are candidates; PROMPT_COMMAND marks it.
+  PROMPT_COMMAND+=('__COMMA_PRIMARY=1')
+  for __comma_m in "${__COMMA_KEYMAPS[@]}"; do
+    bind -m "$__comma_m" -x '"\C-x\C-c": __comma_hook "$_"'
+    bind -m "$__comma_m" '"\C-x\C-a": accept-line'
+    bind -m "$__comma_m" '"\C-m": "\C-x\C-c\C-x\C-a"'
+  done
+  unset __comma_m
 fi

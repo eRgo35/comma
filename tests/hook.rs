@@ -20,8 +20,11 @@ struct Run {
 
 fn tmpdir() -> PathBuf {
     static N: AtomicUsize = AtomicUsize::new(0);
-    let d = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
-        .join(format!("hook-{}-{}", std::process::id(), N.fetch_add(1, Ordering::SeqCst)));
+    let d = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!(
+        "hook-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    ));
     fs::create_dir_all(&d).unwrap();
     d
 }
@@ -29,7 +32,10 @@ fn tmpdir() -> PathBuf {
 /// `lines` are passed as env vars L1, L2, ...; `script` uses them as `p "$L1"`.
 fn run(lines: &[&str], rc: i32, stub_out: &str, script: &str) -> Run {
     let dir = tmpdir();
-    let hook = Command::new(env!("CARGO_BIN_EXE_comma")).args(["init", "bash"]).output().unwrap();
+    let hook = Command::new(env!("CARGO_BIN_EXE_comma"))
+        .args(["init", "bash"])
+        .output()
+        .unwrap();
     fs::write(dir.join("hook.bash"), &hook.stdout).unwrap();
     let stub = dir.join("comma");
     fs::write(&stub, STUB).unwrap();
@@ -44,7 +50,10 @@ fn run(lines: &[&str], rc: i32, stub_out: &str, script: &str) -> Run {
     let mut cmd = Command::new("bash");
     cmd.args(["--norc", "--noprofile", "-c", &full])
         .env("HOOK", dir.join("hook.bash"))
-        .env("PATH", format!("{}:{}", dir.display(), std::env::var("PATH").unwrap()))
+        .env(
+            "PATH",
+            format!("{}:{}", dir.display(), std::env::var("PATH").unwrap()),
+        )
         .env("STUB_LOG", &log)
         .env("STUB_RC", rc.to_string())
         .env("STUB_OUT", stub_out);
@@ -52,10 +61,21 @@ fn run(lines: &[&str], rc: i32, stub_out: &str, script: &str) -> Run {
         cmd.env(format!("L{}", i + 1), l);
     }
     let o = cmd.output().unwrap();
-    assert!(o.status.success(), "bash failed: {}", String::from_utf8_lossy(&o.stderr));
+    assert!(
+        o.status.success(),
+        "bash failed: {}",
+        String::from_utf8_lossy(&o.stderr)
+    );
     Run {
-        out: String::from_utf8_lossy(&o.stdout).lines().map(String::from).collect(),
-        log: fs::read_to_string(&log).unwrap().lines().map(String::from).collect(),
+        out: String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .map(String::from)
+            .collect(),
+        log: fs::read_to_string(&log)
+            .unwrap()
+            .lines()
+            .map(String::from)
+            .collect(),
     }
 }
 
@@ -101,7 +121,12 @@ fn empty_request_does_nothing() {
 
 #[test]
 fn previous_passed_on_next_call() {
-    let r = run(&[",find big files", ",now sort by date"], 0, "ls -lS", r#"p "$L1"; p "$L2""#);
+    let r = run(
+        &[",find big files", ",now sort by date"],
+        0,
+        "ls -lS",
+        r#"p "$L1"; p "$L2""#,
+    );
     assert_eq!(r.log[0], "find big files\t|");
     assert_eq!(r.log[1], "now sort by date\tfind big files|ls -lS");
 }

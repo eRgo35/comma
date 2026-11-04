@@ -26,22 +26,32 @@ If the user asks a question, reply:
 If a previous request is given, the new request may refine it."#;
 
 pub fn user_message(request: &str, ctx: &Context) -> String {
-    let nu = if ctx.nu_available { "available" } else { "not installed" };
+    let nu = if ctx.nu_available {
+        "available"
+    } else {
+        "not installed"
+    };
     let mut m = format!("cwd: {}\nos: {}\nnushell: {nu}\n", ctx.cwd, ctx.os);
     if let Some((req, cmd)) = &ctx.previous {
-        m.push_str(&format!("Previous request: {req}\nPrevious command: {cmd}\n"));
+        m.push_str(&format!(
+            "Previous request: {req}\nPrevious command: {cmd}\n"
+        ));
     }
     m.push_str(&format!("Request: {request}"));
     m
 }
 
 pub fn gather_context() -> Context {
-    let cwd = env::current_dir().map(|p| p.display().to_string()).unwrap_or_default();
+    let cwd = env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
     let os = std::fs::read_to_string("/etc/os-release")
         .ok()
         .and_then(|s| {
-            s.lines()
-                .find_map(|l| l.strip_prefix("PRETTY_NAME=").map(|v| v.trim_matches('"').to_string()))
+            s.lines().find_map(|l| {
+                l.strip_prefix("PRETTY_NAME=")
+                    .map(|v| v.trim_matches('"').to_string())
+            })
         })
         .unwrap_or_else(|| env::consts::OS.to_string());
     let nu_available = env::var_os("PATH")
@@ -51,12 +61,19 @@ pub fn gather_context() -> Context {
         .ok()
         .filter(|r| !r.is_empty())
         .map(|r| (r, env::var("COMMA_PREV_COMMAND").unwrap_or_default()));
-    Context { cwd, os, nu_available, previous }
+    Context {
+        cwd,
+        os,
+        nu_available,
+        previous,
+    }
 }
 
 fn is_executable(p: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    p.metadata().map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+    p.metadata()
+        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -75,7 +92,11 @@ mod tests {
     #[test]
     fn user_message_includes_request_cwd_os() {
         let m = user_message("list big files", &ctx(true, None));
-        assert!(m.contains("list big files") && m.contains("/home/u/proj") && m.contains("Fedora Linux 44"));
+        assert!(
+            m.contains("list big files")
+                && m.contains("/home/u/proj")
+                && m.contains("Fedora Linux 44")
+        );
     }
 
     #[test]
@@ -90,7 +111,10 @@ mod tests {
 
     #[test]
     fn user_message_includes_previous() {
-        let m = user_message("now sort by date", &ctx(true, Some(("list big files", "ls -lS"))));
+        let m = user_message(
+            "now sort by date",
+            &ctx(true, Some(("list big files", "ls -lS"))),
+        );
         assert!(m.contains("list big files") && m.contains("ls -lS"));
     }
 
@@ -101,7 +125,17 @@ mod tests {
 
     #[test]
     fn system_prompt_pins_format() {
-        for s in ["\"kind\"", "command", "answer", "warning", "single line", "nu -c", "no markdown", "current directory", "error suppression"] {
+        for s in [
+            "\"kind\"",
+            "command",
+            "answer",
+            "warning",
+            "single line",
+            "nu -c",
+            "no markdown",
+            "current directory",
+            "error suppression",
+        ] {
             assert!(SYSTEM_PROMPT.contains(s), "missing {s}");
         }
     }

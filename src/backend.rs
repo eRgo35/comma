@@ -68,12 +68,24 @@ pub fn call_api(key: Option<&str>, system: &str, user: &str) -> Result<String, B
 
 pub fn call_claude_cli(system: &str, user: &str) -> Result<String, BackendError> {
     let out = Command::new("claude")
-        .args(["-p", "--model", "haiku", "--tools", "", "--system-prompt", system, user])
+        .args([
+            "-p",
+            "--model",
+            "haiku",
+            "--tools",
+            "",
+            "--system-prompt",
+            system,
+            user,
+        ])
         .output()
         .map_err(|e| BackendError::Other(format!("could not run claude: {e}")))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
-        return Err(BackendError::Other(format!("claude failed: {}", err.trim())));
+        return Err(BackendError::Other(format!(
+            "claude failed: {}",
+            err.trim()
+        )));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -83,9 +95,13 @@ pub fn complete(system: &str, user: &str) -> Result<String, String> {
     let key = std::env::var(KEY_ENV).ok();
     match call_api(key.as_deref(), system, user) {
         Ok(text) => Ok(text),
-        Err(e) if should_fallback(&e) => {
-            call_claude_cli(system, user).map_err(|f| format!("{} and claude fallback failed: {}", describe(&e), describe(&f)))
-        }
+        Err(e) if should_fallback(&e) => call_claude_cli(system, user).map_err(|f| {
+            format!(
+                "{} and claude fallback failed: {}",
+                describe(&e),
+                describe(&f)
+            )
+        }),
         Err(e) => Err(describe(&e)),
     }
 }
@@ -135,7 +151,10 @@ mod tests {
     #[test]
     fn extracts_first_text_block() {
         let r = serde_json::json!({"content":[{"type":"text","text":"{\"kind\":\"answer\",\"text\":\"hi\"}"}]});
-        assert_eq!(extract_text(&r).unwrap(), "{\"kind\":\"answer\",\"text\":\"hi\"}");
+        assert_eq!(
+            extract_text(&r).unwrap(),
+            "{\"kind\":\"answer\",\"text\":\"hi\"}"
+        );
     }
 
     #[test]

@@ -2,7 +2,10 @@ use serde_json::Value;
 
 #[derive(Debug, PartialEq)]
 pub enum Reply {
-    Command { command: String, warning: Option<String> },
+    Command {
+        command: String,
+        warning: Option<String>,
+    },
     Answer(String),
 }
 
@@ -37,7 +40,10 @@ mod tests {
     fn parses_command() {
         assert_eq!(
             parse_reply(r#"{"kind":"command","command":"ls -l","warning":null}"#),
-            Ok(Reply::Command { command: "ls -l".into(), warning: None })
+            Ok(Reply::Command {
+                command: "ls -l".into(),
+                warning: None
+            })
         );
     }
 
@@ -45,7 +51,10 @@ mod tests {
     fn parses_command_with_warning() {
         assert_eq!(
             parse_reply(r#"{"kind":"command","command":"rm *.log","warning":"deletes files"}"#),
-            Ok(Reply::Command { command: "rm *.log".into(), warning: Some("deletes files".into()) })
+            Ok(Reply::Command {
+                command: "rm *.log".into(),
+                warning: Some("deletes files".into())
+            })
         );
     }
 
@@ -67,7 +76,10 @@ mod tests {
     fn empty_warning_is_none() {
         assert_eq!(
             parse_reply(r#"{"kind":"command","command":"ls","warning":""}"#),
-            Ok(Reply::Command { command: "ls".into(), warning: None })
+            Ok(Reply::Command {
+                command: "ls".into(),
+                warning: None
+            })
         );
     }
 

@@ -10,7 +10,12 @@ const HOOK: &str = include_str!("hook.bash");
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+    match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
         ["init", "bash"] => {
             print!("{HOOK}");
             ExitCode::SUCCESS
@@ -33,7 +38,8 @@ fn ask(request: &str) -> ExitCode {
         eprint!("thinking…");
         let _ = std::io::stderr().flush();
     }
-    let result = backend::complete(prompt::SYSTEM_PROMPT, &msg).and_then(|raw| reply::parse_reply(&raw));
+    let result =
+        backend::complete(prompt::SYSTEM_PROMPT, &msg).and_then(|raw| reply::parse_reply(&raw));
     if spinner {
         eprint!("\r\x1b[2K");
     }
