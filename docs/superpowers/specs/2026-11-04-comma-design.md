@@ -23,7 +23,7 @@ Both the `,…` request and the command actually run go into bash history.
 
 ## Backend
 
-- Direct Anthropic Messages API, model hardcoded to `claude-haiku-5-5`, key from `ANTHROPIC_API_KEY`. No config file.
+- Direct Anthropic Messages API, model hardcoded to `claude-haiku-5-5`, key from `COMMA_API_KEY`. No config file.
 - Fall back to `claude -p` only when there is no key or the API returns an HTTP error status (401, 429, 5xx, …). No fallback on network failure or timeout.
 
 ## Context sent

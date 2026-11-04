@@ -4,6 +4,8 @@ use std::time::Duration;
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const MODEL: &str = "claude-haiku-5-5";
+/// Own variable, so Claude Code does not pick the key up from ANTHROPIC_API_KEY.
+const KEY_ENV: &str = "COMMA_API_KEY";
 const API_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
@@ -78,7 +80,7 @@ pub fn call_claude_cli(system: &str, user: &str) -> Result<String, BackendError>
 
 /// Ask the API, falling back to `claude -p`. Errors are short one-line strings.
 pub fn complete(system: &str, user: &str) -> Result<String, String> {
-    let key = std::env::var("ANTHROPIC_API_KEY").ok();
+    let key = std::env::var(KEY_ENV).ok();
     match call_api(key.as_deref(), system, user) {
         Ok(text) => Ok(text),
         Err(e) if should_fallback(&e) => {
@@ -90,7 +92,7 @@ pub fn complete(system: &str, user: &str) -> Result<String, String> {
 
 fn describe(e: &BackendError) -> String {
     match e {
-        BackendError::NoKey => "no ANTHROPIC_API_KEY".into(),
+        BackendError::NoKey => format!("no {KEY_ENV}"),
         BackendError::Http(s, body) => {
             let msg = serde_json::from_str::<Value>(body).ok();
             match msg.as_ref().and_then(|v| v["error"]["message"].as_str()) {
@@ -139,6 +141,12 @@ mod tests {
     #[test]
     fn extract_errors_without_text() {
         assert!(extract_text(&serde_json::json!({"content":[]})).is_err());
+    }
+
+    #[test]
+    fn key_comes_from_comma_api_key() {
+        assert_eq!(KEY_ENV, "COMMA_API_KEY");
+        assert!(describe(&BackendError::NoKey).contains("COMMA_API_KEY"));
     }
 
     #[test]
