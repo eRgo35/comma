@@ -53,7 +53,7 @@ Open a new shell and try `,list files here`.
 
 comma calls the Anthropic API directly with `claude-haiku-5-5` and a 5 second timeout, using `COMMA_API_KEY`. It deliberately does not read `ANTHROPIC_API_KEY`, so exporting the key does not change how Claude Code bills you.
 
-If no key is set, or the API returns an error (bad key, rate limit, outage), comma falls back to the [Claude Code](https://claude.com/claude-code) CLI (`claude -p`) if you have it. The fallback works with your Claude subscription but takes several seconds per request.
+If no key is set, or the API returns an error (bad key, rate limit, outage), comma falls back to the [Claude Code](https://claude.com/claude-code) CLI (`claude -p`) if you have it. The fallback works with your Claude subscription but takes several seconds per request, and gives up after 30 seconds.
 
 ## When something fails
 

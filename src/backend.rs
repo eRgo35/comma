@@ -1,12 +1,13 @@
 use serde_json::{Value, json};
-use std::process::Command;
-use std::time::Duration;
+use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const MODEL: &str = "claude-haiku-5-5";
 /// Own variable, so Claude Code does not pick the key up from ANTHROPIC_API_KEY.
 const KEY_ENV: &str = "COMMA_API_KEY";
 const API_TIMEOUT: Duration = Duration::from_secs(5);
+const CLI_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 pub enum BackendError {
@@ -70,21 +71,20 @@ pub fn call_api(key: Option<&str>, system: &str, user: &str) -> Result<String, B
 }
 
 pub fn call_claude_cli(system: &str, user: &str) -> Result<String, BackendError> {
-    let out = Command::new("claude")
-        .args([
-            "-p",
-            "--model",
-            "haiku",
-            "--tools",
-            "",
-            "--system-prompt",
-            system,
-            // So a request starting with "-" isn't read as a flag.
-            "--",
-            user,
-        ])
-        .output()
-        .map_err(|e| BackendError::Other(format!("could not run claude: {e}")))?;
+    let mut cmd = Command::new("claude");
+    cmd.args([
+        "-p",
+        "--model",
+        "haiku",
+        "--tools",
+        "",
+        "--system-prompt",
+        system,
+        // So a request starting with "-" isn't read as a flag.
+        "--",
+        user,
+    ]);
+    let out = run_with_timeout(cmd, CLI_TIMEOUT)?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         return Err(BackendError::Other(format!(
@@ -93,6 +93,31 @@ pub fn call_claude_cli(system: &str, user: &str) -> Result<String, BackendError>
         )));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Run `cmd` capturing its output, killing it after `limit`.
+fn run_with_timeout(mut cmd: Command, limit: Duration) -> Result<Output, BackendError> {
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| BackendError::Other(format!("could not run claude: {e}")))?;
+    let start = Instant::now();
+    while child.try_wait().ok().flatten().is_none() {
+        if start.elapsed() >= limit {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(BackendError::Other(format!(
+                "claude timed out after {}s",
+                limit.as_secs()
+            )));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    child
+        .wait_with_output()
+        .map_err(|e| BackendError::Other(format!("could not run claude: {e}")))
 }
 
 /// Ask the API, falling back to `claude -p`. Errors are short one-line strings.
@@ -161,6 +186,23 @@ mod tests {
             extract_text(&r).unwrap(),
             "{\"kind\":\"answer\",\"text\":\"hi\"}"
         );
+    }
+
+    #[test]
+    fn run_with_timeout_kills_slow_command() {
+        let mut cmd = Command::new("sleep");
+        cmd.arg("5");
+        let start = Instant::now();
+        assert!(run_with_timeout(cmd, Duration::from_millis(200)).is_err());
+        assert!(start.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn run_with_timeout_returns_output() {
+        let mut cmd = Command::new("echo");
+        cmd.arg("hi");
+        let out = run_with_timeout(cmd, Duration::from_secs(5)).unwrap();
+        assert_eq!(out.stdout, b"hi\n");
     }
 
     #[test]
