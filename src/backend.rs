@@ -35,6 +35,15 @@ pub fn request_body(system: &str, user: &str) -> Value {
 }
 
 pub fn extract_text(resp: &Value) -> Result<String, BackendError> {
+    match resp["stop_reason"].as_str() {
+        Some("max_tokens") => {
+            return Err(BackendError::Other(
+                "reply was cut off at the token limit".into(),
+            ));
+        }
+        Some("refusal") => return Err(BackendError::Other("model refused the request".into())),
+        _ => {}
+    }
     resp["content"]
         .as_array()
         .and_then(|blocks| blocks.iter().find_map(|b| b["text"].as_str()))
@@ -186,6 +195,18 @@ mod tests {
             extract_text(&r).unwrap(),
             "{\"kind\":\"answer\",\"text\":\"hi\"}"
         );
+    }
+
+    #[test]
+    fn extract_reports_truncation_and_refusal() {
+        let cut = serde_json::json!({"stop_reason":"max_tokens","content":[{"type":"text","text":"{\"kind\""}]});
+        let refused = serde_json::json!({"stop_reason":"refusal","content":[]});
+        for (r, want) in [(cut, "cut off"), (refused, "refused")] {
+            match extract_text(&r) {
+                Err(BackendError::Other(m)) => assert!(m.contains(want), "{m}"),
+                other => panic!("{other:?}"),
+            }
+        }
     }
 
     #[test]
