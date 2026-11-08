@@ -25,6 +25,9 @@ pub fn request_body(system: &str, user: &str) -> Value {
     json!({
         "model": MODEL,
         "max_tokens": 400,
+        // Haiku 5.5 thinks by default; that can use the whole token budget
+        // and leave no text, and a one-line reply doesn't need it.
+        "thinking": {"type": "disabled"},
         "system": system,
         "messages": [{"role": "user", "content": user}],
     })
@@ -146,6 +149,7 @@ mod tests {
         assert_eq!(b["messages"][0]["role"], "user");
         assert_eq!(b["messages"][0]["content"], "USER");
         assert_eq!(b["max_tokens"], 400);
+        assert_eq!(b["thinking"]["type"], "disabled");
     }
 
     #[test]
