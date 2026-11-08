@@ -57,7 +57,7 @@ fn ask(request: &str) -> ExitCode {
             ExitCode::from(2)
         }
         Err(e) => {
-            eprintln!("comma: {e}");
+            eprintln!("comma: {}", reply::clean(&e));
             ExitCode::from(1)
         }
     }

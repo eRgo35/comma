@@ -24,12 +24,24 @@ pub fn parse_reply(raw: &str) -> Result<Reply, String> {
             if command.is_empty() {
                 return Err("model returned an empty command".into());
             }
-            let warning = Some(text("warning")).filter(|w| !w.is_empty());
+            // A newline would make one Enter run several commands.
+            if command.chars().any(char::is_control) {
+                return Err("model returned a command with a newline or control character".into());
+            }
+            let warning = Some(clean(&text("warning"))).filter(|w| !w.is_empty());
             Ok(Reply::Command { command, warning })
         }
-        Some("answer") => Ok(Reply::Answer(text("text"))),
+        Some("answer") => Ok(Reply::Answer(clean(&text("text")))),
         _ => Err("model reply had an unknown kind".into()),
     }
+}
+
+/// Drop control characters except newline and tab, so text printed to the
+/// terminal can't carry escape sequences (colours, cursor moves, clipboard writes).
+pub fn clean(s: &str) -> String {
+    s.chars()
+        .filter(|&c| !c.is_control() || c == '\n' || c == '\t')
+        .collect()
 }
 
 #[cfg(test)]
@@ -91,5 +103,30 @@ mod tests {
     #[test]
     fn rejects_empty_command() {
         assert!(parse_reply(r#"{"kind":"command","command":"  "}"#).is_err());
+    }
+
+    #[test]
+    fn rejects_multiline_command() {
+        assert!(parse_reply(r#"{"kind":"command","command":"echo a\necho b"}"#).is_err());
+    }
+
+    #[test]
+    fn rejects_command_with_escape() {
+        assert!(parse_reply(r#"{"kind":"command","command":"ls \u001b[2K"}"#).is_err());
+    }
+
+    #[test]
+    fn strips_escapes_from_answer_and_warning() {
+        assert_eq!(
+            parse_reply(r#"{"kind":"answer","text":"\u001b]52;c;eA==\u0007a\nb"}"#),
+            Ok(Reply::Answer("]52;c;eA==a\nb".into()))
+        );
+        assert_eq!(
+            parse_reply(r#"{"kind":"command","command":"ls","warning":"\u001b[31mx"}"#),
+            Ok(Reply::Command {
+                command: "ls".into(),
+                warning: Some("[31mx".into())
+            })
+        );
     }
 }
