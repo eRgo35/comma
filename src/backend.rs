@@ -79,6 +79,8 @@ pub fn call_claude_cli(system: &str, user: &str) -> Result<String, BackendError>
             "",
             "--system-prompt",
             system,
+            // So a request starting with "-" isn't read as a flag.
+            "--",
             user,
         ])
         .output()
