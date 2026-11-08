@@ -9,7 +9,8 @@ __comma_process() {
   local req="${READLINE_LINE#,}" out rc
   [[ -n ${req//[[:space:]]/} ]] || return 0
   history -s -- "$READLINE_LINE"
-  out=$(COMMA_PREV_REQUEST="$__COMMA_PREV_REQUEST" COMMA_PREV_COMMAND="$__COMMA_PREV_COMMAND" \
+  out=$(COMMA_API_KEY="${COMMA_API_KEY-}" \
+        COMMA_PREV_REQUEST="$__COMMA_PREV_REQUEST" COMMA_PREV_COMMAND="$__COMMA_PREV_COMMAND" \
         command comma ask "$req"); rc=$?
   case $rc in
     0) READLINE_LINE=$out; READLINE_POINT=${#out}
@@ -33,6 +34,9 @@ __comma_hook() {
 if [[ $- == *i* ]] && command -v comma >/dev/null; then
   # Only lines typed at the main prompt are candidates; PROMPT_COMMAND marks it.
   PROMPT_COMMAND+=('__COMMA_PRIMARY=1')
+  # Keep the key in this shell but out of other programs' environment
+  # (npm scripts, build tools, ...); __comma_process passes it to comma only.
+  export -n COMMA_API_KEY
   for __comma_m in "${__COMMA_KEYMAPS[@]}"; do
     bind -m "$__comma_m" -x '"\C-x\C-c": __comma_hook "$_"'
     bind -m "$__comma_m" '"\C-x\C-a": accept-line'

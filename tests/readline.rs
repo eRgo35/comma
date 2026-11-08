@@ -5,12 +5,14 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
 
-const STUB: &str =
-    "#!/bin/bash\nprintf '%s\\n' \"$2\" >> \"$STUB_LOG\"\nprintf '%s' \"$STUB_OUT\"\n";
+const STUB: &str = "#!/bin/bash\nprintf '%s\\n' \"$2\" >> \"$STUB_LOG\"\n\
+     printf '%s' \"$COMMA_API_KEY\" > \"$STUB_LOG.key\"\nprintf '%s' \"$STUB_OUT\"\n";
 
 struct Run {
     screen: String,
     log: String,
+    /// COMMA_API_KEY as the stub saw it ("" if comma never ran).
+    key: String,
 }
 
 fn drive(name: &str, stub_out: &str, keys: &[&str]) -> Run {
@@ -39,11 +41,13 @@ fn drive(name: &str, stub_out: &str, keys: &[&str]) -> Run {
         )
         .env("STUB_LOG", &log)
         .env("STUB_OUT", stub_out)
+        .env("COMMA_API_KEY", "test-key")
         .output()
         .unwrap();
     Run {
         screen: String::from_utf8_lossy(&o.stdout).into(),
         log: fs::read_to_string(&log).unwrap(),
+        key: fs::read_to_string(dir.join("log.key")).unwrap_or_default(),
     }
 }
 
@@ -91,4 +95,18 @@ fn vi_command_mode_uses_hook() {
     );
     assert!(r.screen.contains("VC-4"), "{}", r.screen);
     assert!(!r.screen.contains("command not found"), "{}", r.screen);
+}
+
+#[test]
+fn api_key_reaches_comma_but_not_other_programs() {
+    let r = drive(
+        "api-key",
+        "",
+        &[
+            "bash -c 'echo \"[child:${COMMA_API_KEY-unset}]\"'\r",
+            ",x\r",
+        ],
+    );
+    assert!(r.screen.contains("[child:unset]"), "{}", r.screen);
+    assert_eq!(r.key, "test-key");
 }

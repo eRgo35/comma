@@ -39,6 +39,8 @@ command -v comma >/dev/null && eval "$(comma init bash)"
 
 Open a new shell and try `,list files here`.
 
+The hook un-exports `COMMA_API_KEY` and passes it only to comma, so other programs you start from that shell (build tools, `npm`/`pnpm` scripts, ...) can't read it.
+
 ## How it works
 
 - Only lines that **start** with `,` at the main prompt are touched. Everything else, including heredoc and continuation lines, behaves exactly as before.
