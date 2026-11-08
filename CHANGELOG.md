@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.0](https://github.com/eRgo35/comma/compare/comma-v0.1.0...comma-v0.2.0) (2026-11-08)
+
+
+### Features
+
+* warn locally about clearly risky commands the model didn't flag ([d2918e6](https://github.com/eRgo35/comma/commit/d2918e66ae12bc212861e271d5a9c73ef6b6b624))
+
+
+### Bug Fixes
+
+* disable thinking so API replies aren't truncated ([4c11b49](https://github.com/eRgo35/comma/commit/4c11b4912d2d103411e4edbc8c924e4c6073a18b))
+* keep COMMA_API_KEY out of other programs' environment ([4ebc659](https://github.com/eRgo35/comma/commit/4ebc65999589ca10622d7118e5f401f7db954c15))
+* pass the request after -- so the claude fallback can't read it as a flag ([c25656e](https://github.com/eRgo35/comma/commit/c25656e9c5fe25a7efbc63516b0115a12b9c1bd4))
+* reject multi-line commands and strip escape codes from model output ([c73b759](https://github.com/eRgo35/comma/commit/c73b7592a290cf00cdad0983e1e865380c4df67f))
+* say when the reply was cut off or refused instead of 'no text' ([c3cde2f](https://github.com/eRgo35/comma/commit/c3cde2f89dc6d5027e110498513191c8a46f7128))
+* show claude's actual error instead of its first stderr line ([1d89c76](https://github.com/eRgo35/comma/commit/1d89c76195e88a77c94a33daf5e2f7fddc393fe9))
+* time out the claude fallback after 30 seconds ([0a95440](https://github.com/eRgo35/comma/commit/0a954405024a88268adb409bfc9d8513ee9a8cfc))
+
 ## 0.1.0 (2026-11-04)
 
 
