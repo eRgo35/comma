@@ -95,13 +95,28 @@ pub fn call_claude_cli(system: &str, user: &str) -> Result<String, BackendError>
     ]);
     let out = run_with_timeout(cmd, CLI_TIMEOUT)?;
     if !out.status.success() {
-        let err = String::from_utf8_lossy(&out.stderr);
         return Err(BackendError::Other(format!(
             "claude failed: {}",
-            err.trim()
+            failure_line(&out)
         )));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// `claude -p` prints its error on stdout and notices (sign-in expiry, ...) on
+/// stderr, so prefer the last line of stdout, then the last line of stderr.
+fn failure_line(out: &Output) -> String {
+    let last = |b: &[u8]| {
+        String::from_utf8_lossy(b)
+            .lines()
+            .rev()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .map(String::from)
+    };
+    last(&out.stdout)
+        .or_else(|| last(&out.stderr))
+        .unwrap_or_else(|| format!("exit status {}", out.status))
 }
 
 /// Run `cmd` capturing its output, killing it after `limit`.
@@ -224,6 +239,25 @@ mod tests {
         cmd.arg("hi");
         let out = run_with_timeout(cmd, Duration::from_secs(5)).unwrap();
         assert_eq!(out.stdout, b"hi\n");
+    }
+
+    #[test]
+    fn failure_line_prefers_stdout_then_last_stderr_line() {
+        use std::os::unix::process::ExitStatusExt;
+        let out = |o: &str, e: &str| Output {
+            status: std::process::ExitStatus::from_raw(1 << 8),
+            stdout: o.into(),
+            stderr: e.into(),
+        };
+        assert_eq!(
+            failure_line(&out("bad model\n", "Warning: sign-in ends\n")),
+            "bad model"
+        );
+        assert_eq!(
+            failure_line(&out("", "Warning: sign-in ends\nnot logged in\n\n")),
+            "not logged in"
+        );
+        assert!(failure_line(&out("", "")).contains("exit status"));
     }
 
     #[test]
