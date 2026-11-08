@@ -43,7 +43,7 @@ Open a new shell and try `,list files here`.
 
 - Only lines that **start** with `,` at the main prompt are touched. Everything else, including heredoc and continuation lines, behaves exactly as before.
 - Your text is passed to comma raw, before bash parses it, so `>`, `|`, quotes and globs are safe to type.
-- Claude replies with either a command, which replaces your line, or a short answer, which is printed. Risky commands (deleting, overwriting, sudo, network, git push) get a `⚠` line. Commands that span several lines or contain control characters are rejected.
+- Claude replies with either a command, which replaces your line, or a short answer, which is printed. Risky commands (deleting, overwriting, sudo, network, git push) get a `⚠` line. comma also checks the command itself for the clearly risky ones, in case Claude leaves the warning out. Commands that span several lines or contain control characters are rejected.
 - comma remembers your last request in the current shell, so you can refine it: `,now only .rs files`.
 - Both your `,…` request and the command you run go into bash history.
 - When nushell (`nu`) is installed and structured filtering is easier, comma may suggest `nu -c '…'`.

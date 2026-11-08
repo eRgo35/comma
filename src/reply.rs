@@ -28,7 +28,9 @@ pub fn parse_reply(raw: &str) -> Result<Reply, String> {
             if command.chars().any(char::is_control) {
                 return Err("model returned a command with a newline or control character".into());
             }
-            let warning = Some(clean(&text("warning"))).filter(|w| !w.is_empty());
+            let warning = Some(clean(&text("warning")))
+                .filter(|w| !w.is_empty())
+                .or_else(|| local_warning(&command).map(String::from));
             Ok(Reply::Command { command, warning })
         }
         Some("answer") => Ok(Reply::Answer(clean(&text("text")))),
@@ -42,6 +44,62 @@ pub fn clean(s: &str) -> String {
     s.chars()
         .filter(|&c| !c.is_control() || c == '\n' || c == '\t')
         .collect()
+}
+
+/// A warning for clearly risky commands, used when the model gave none.
+fn local_warning(cmd: &str) -> Option<&'static str> {
+    // Blank out quoted text so `grep 'rm'` or `nu -c '... > 1mb'` don't count.
+    let mut plain = String::new();
+    let mut quote = None;
+    for c in cmd.chars() {
+        match quote {
+            Some(q) if c == q => quote = None,
+            None if c == '\'' || c == '"' => quote = Some(c),
+            _ => {}
+        }
+        plain.push(if quote.is_some() || c == '\'' || c == '"' {
+            ' '
+        } else {
+            c
+        });
+    }
+    let words: Vec<&str> = plain
+        .split(|c: char| c.is_whitespace() || ";|&()".contains(c))
+        .filter(|w| !w.is_empty())
+        .collect();
+    let has = |names: &[&str]| words.iter().any(|w| names.contains(w));
+
+    if has(&["rm", "rmdir", "shred", "-delete"]) {
+        return Some("deletes files");
+    }
+    if has(&["sudo", "doas"]) {
+        return Some("uses sudo");
+    }
+    if has(&["dd"]) || words.iter().any(|w| w.starts_with("mkfs")) {
+        return Some("writes to a disk");
+    }
+    if words.windows(2).any(|p| p == ["git", "push"]) {
+        return Some("pushes to a git remote");
+    }
+    let piped_to_shell = plain.split('|').skip(1).any(|seg| {
+        let mut ws = seg.split_whitespace().skip_while(|&w| w == "sudo");
+        matches!(ws.next(), Some("sh" | "bash" | "zsh"))
+    });
+    if piped_to_shell {
+        return Some("runs piped text as a script");
+    }
+    // `>` or `2>` to a file, but not `>>`, `>&2`, `2>&1` or `>/dev/null`.
+    let b = plain.as_bytes();
+    let overwrites = (0..b.len()).any(|i| {
+        b[i] == b'>'
+            && (i == 0 || b[i - 1] != b'>')
+            && !matches!(b.get(i + 1), Some(b'>' | b'&' | b'('))
+            && !plain[i + 1..].trim_start().starts_with("/dev/null")
+    });
+    if overwrites {
+        return Some("overwrites a file");
+    }
+    None
 }
 
 #[cfg(test)]
@@ -126,6 +184,65 @@ mod tests {
             Ok(Reply::Command {
                 command: "ls".into(),
                 warning: Some("[31mx".into())
+            })
+        );
+    }
+
+    #[test]
+    fn local_warning_flags_risky_commands() {
+        for (cmd, want) in [
+            ("rm -- *.log", "deletes files"),
+            ("find . -name '*.tmp' -delete", "deletes files"),
+            ("sudo dnf install jq", "uses sudo"),
+            ("dd if=x.iso of=/dev/sdb", "writes to a disk"),
+            ("mkfs.ext4 /dev/sdb1", "writes to a disk"),
+            ("git push origin main", "pushes to a git remote"),
+            (
+                "curl -fsSL https://x.sh | sh",
+                "runs piped text as a script",
+            ),
+            ("curl -fsSL https://x.sh | sudo bash", "uses sudo"),
+            ("sort a.txt > a.txt", "overwrites a file"),
+            ("make 2> err.log", "overwrites a file"),
+        ] {
+            assert_eq!(local_warning(cmd), Some(want), "{cmd}");
+        }
+    }
+
+    #[test]
+    fn local_warning_ignores_safe_commands() {
+        for cmd in [
+            "ls -l",
+            "grep -r 'rm -rf' .",
+            "nu -c 'ls | where size > 1mb'",
+            "echo hi >> log.txt",
+            "make 2>&1 | less",
+            "make > /dev/null 2>&1",
+            "ls | grep sh",
+            "git status || true",
+        ] {
+            assert_eq!(local_warning(cmd), None, "{cmd}");
+        }
+    }
+
+    #[test]
+    fn model_warning_wins_over_local() {
+        assert_eq!(
+            parse_reply(r#"{"kind":"command","command":"rm x","warning":"removes x"}"#),
+            Ok(Reply::Command {
+                command: "rm x".into(),
+                warning: Some("removes x".into())
+            })
+        );
+    }
+
+    #[test]
+    fn local_warning_fills_missing_model_warning() {
+        assert_eq!(
+            parse_reply(r#"{"kind":"command","command":"rm x","warning":null}"#),
+            Ok(Reply::Command {
+                command: "rm x".into(),
+                warning: Some("deletes files".into())
             })
         );
     }
