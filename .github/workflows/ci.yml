@@ -23,3 +23,25 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # Real Clink + pywinpty for tests/clink.rs (the hook's end-to-end tests).
+      - name: Install Clink and pywinpty
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R chrisant996/clink -p "*_setup.exe" -D $env:RUNNER_TEMP
+          $setup = Get-ChildItem $env:RUNNER_TEMP -Filter "*_setup.exe" | Select-Object -First 1
+          Start-Process -Wait -FilePath $setup.FullName -ArgumentList "/S"
+          python -m pip install pywinpty
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
