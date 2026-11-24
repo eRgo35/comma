@@ -48,7 +48,65 @@ pub fn clean(s: &str) -> String {
 }
 
 /// A warning for clearly risky commands, used when the model gave none.
-fn local_warning(cmd: &str, _shell: Shell) -> Option<&'static str> {
+fn local_warning(cmd: &str, shell: Shell) -> Option<&'static str> {
+    match shell {
+        Shell::Bash => bash_warning(cmd),
+        Shell::Cmd => cmd_warning(cmd),
+    }
+}
+
+/// cmd quotes only with `"`, and PowerShell code sits inside those quotes, so
+/// nothing is blanked here: a risky word anywhere warns. Over-warning is fine.
+fn cmd_warning(cmd: &str) -> Option<&'static str> {
+    let lower = cmd.to_ascii_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| c.is_whitespace() || ";|&()\"".contains(c))
+        .filter(|w| !w.is_empty())
+        .collect();
+    let has = |names: &[&str]| words.iter().any(|w| names.contains(w));
+
+    if has(&["del", "erase", "rd", "rmdir", "remove-item", "rm", "ri"]) {
+        return Some("deletes files");
+    }
+    if has(&["format", "diskpart", "format-volume", "clear-disk"]) {
+        return Some("writes to a disk");
+    }
+    // Also covers PowerShell's `-Verb RunAs`.
+    if has(&["runas"]) {
+        return Some("needs elevation");
+    }
+    if words.windows(2).any(|p| p == ["git", "push"]) {
+        return Some("pushes to a git remote");
+    }
+    let downloads = has(&[
+        "iwr",
+        "invoke-webrequest",
+        "irm",
+        "invoke-restmethod",
+        "curl",
+    ]);
+    if downloads && has(&["iex", "invoke-expression"]) {
+        return Some("runs downloaded text as a script");
+    }
+    // `>` or `2>` to a file, but not `>>`, `>&`, `2>&1` or `>nul`.
+    let b = lower.as_bytes();
+    let to_nul = |rest: &str| {
+        let rest = rest.trim_start();
+        rest.starts_with("nul") && !rest[3..].starts_with(|c: char| c.is_alphanumeric() || c == '.')
+    };
+    let overwrites = (0..b.len()).any(|i| {
+        b[i] == b'>'
+            && (i == 0 || b[i - 1] != b'>')
+            && !matches!(b.get(i + 1), Some(b'>' | b'&'))
+            && !to_nul(&lower[i + 1..])
+    });
+    if overwrites || has(&["set-content", "out-file"]) {
+        return Some("overwrites a file");
+    }
+    None
+}
+
+fn bash_warning(cmd: &str) -> Option<&'static str> {
     // Blank out quoted text so `grep 'rm'` or `nu -c '... > 1mb'` don't count.
     let mut plain = String::new();
     let mut quote = None;
@@ -249,6 +307,54 @@ mod tests {
                 command: "rm x".into(),
                 warning: Some("deletes files".into())
             })
+        );
+    }
+
+    fn cmd_warning(cmd: &str, shell: Shell) -> Option<String> {
+        let json = serde_json::json!({"kind": "command", "command": cmd, "warning": null});
+        match super::parse_reply(&json.to_string(), shell) {
+            Ok(Reply::Command { warning, .. }) => warning,
+            other => panic!("{cmd}: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cmd_local_warnings() {
+        for (cmd, want) in [
+            ("del /q *.log", "deletes files"),
+            ("rd /s /q build", "deletes files"),
+            (
+                r#"powershell -NoProfile -c "Remove-Item x.txt""#,
+                "deletes files",
+            ),
+            ("format D:", "writes to a disk"),
+            ("runas /user:Administrator cmd", "needs elevation"),
+            ("git push origin main", "pushes to a git remote"),
+            (
+                r#"powershell -c "iwr https://x | iex""#,
+                "runs downloaded text as a script",
+            ),
+            ("echo hi > out.txt", "overwrites a file"),
+            ("echo zażółć > plik.txt", "overwrites a file"),
+        ] {
+            assert_eq!(cmd_warning(cmd, Shell::Cmd).as_deref(), Some(want), "{cmd}");
+        }
+        for cmd in [
+            "echo hi >nul",
+            "echo hi > NUL",
+            "dir /s /b",
+            "echo hi >> log.txt",
+            "findstr /i error app.log 2>&1",
+        ] {
+            assert_eq!(cmd_warning(cmd, Shell::Cmd), None, "{cmd}");
+        }
+    }
+
+    #[test]
+    fn del_is_not_a_bash_risk_word() {
+        assert_ne!(
+            cmd_warning("del x", Shell::Bash).as_deref(),
+            Some("deletes files")
         );
     }
 }
