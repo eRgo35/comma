@@ -1,6 +1,6 @@
 # comma
 
-Ask Claude for a shell command right at your bash prompt. Type `,` followed by what you want, press Enter, and the command appears on your prompt line for you to check and run.
+Ask Claude for a shell command right at your bash prompt, or in cmd.exe with Clink on Windows. Type `,` followed by what you want, press Enter, and the command appears on your prompt line for you to check and run.
 
 ```console
 $ ,list files bigger than 1mb here
@@ -22,7 +22,7 @@ comma is for quick one-shot help: building a command or answering a short questi
 
 ## Install
 
-Requires bash 5.1 or newer on Linux.
+Requires bash 5.1 or newer on Linux. For Windows, see [Windows (cmd + Clink)](#windows-cmd--clink).
 
 Download a binary from the [latest release](https://github.com/eRgo35/comma/releases/latest) (x86_64 and aarch64, static) and put `comma` on your `PATH`, or build it:
 
@@ -40,6 +40,30 @@ command -v comma >/dev/null && eval "$(comma init bash)"
 Open a new shell and try `,list files here`.
 
 The hook un-exports `COMMA_API_KEY` and passes it only to comma, so other programs you start from that shell (build tools, `npm`/`pnpm` scripts, ...) can't read it.
+
+## Windows (cmd + Clink)
+
+Requires [Clink](https://github.com/chrisant996/clink) 1.2.46 or newer. Download `comma-<version>-x86_64-pc-windows-msvc.zip` from the [latest release](https://github.com/eRgo35/comma/releases/latest) and put `comma.exe` on your `PATH`.
+
+Then create `%LOCALAPPDATA%\clink\comma.lua` (Clink's scripts folder; `clink info` shows yours) with:
+
+```lua
+local f = io.popen("comma init cmd 2>nul")
+if f then local s = f:read("*a"); f:close(); if s ~= "" then load(s, "comma")() end end
+```
+
+Open a new cmd and try `,list files here`.
+
+```console
+C:\proj> ,find .log files bigger than 1mb
+C:\proj> powershell -NoProfile -c "Get-ChildItem -Recurse -Filter *.log | Where-Object Length -gt 1MB"
+```
+
+- Commands are plain cmd when that works, `powershell -NoProfile -c "..."` when cmd can't do it cleanly, and `nu -c '...'` if nushell is installed.
+- The API key is optional. Without it comma uses `claude -p`, which it finds on `PATH` as `claude.exe` (the native installer or Scoop). An npm install of Claude Code (`claude.cmd`) is not found.
+- If you do set a key (`setx COMMA_API_KEY sk-ant-...`), the hook clears it inside each cmd so only comma gets it. After a Clink script reload (Ctrl-X Ctrl-R), or in a cmd started from that cmd, the key is gone for that session and comma falls back to `claude -p`.
+- `,` lines go into Clink history, but quotes in them are dropped there.
+- Works in emacs and vi editing modes. `( ... More?` continuation lines are never touched.
 
 ## How it works
 
@@ -70,6 +94,7 @@ Each request sends:
 - the text after `,`
 - your current directory path
 - your OS name
+- which shell (only when it's cmd)
 - whether `nu` is installed
 - your previous request and the command it produced
 
