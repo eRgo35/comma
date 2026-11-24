@@ -55,7 +55,10 @@ pub fn gather_context() -> Context {
         })
         .unwrap_or_else(|| env::consts::OS.to_string());
     let nu_available = env::var_os("PATH")
-        .map(|p| env::split_paths(&p).any(|d| is_executable(&d.join("nu"))))
+        .map(|p| {
+            let nu = if cfg!(windows) { "nu.exe" } else { "nu" };
+            env::split_paths(&p).any(|d| is_executable(&d.join(nu)))
+        })
         .unwrap_or(false);
     let previous = env::var("COMMA_PREV_REQUEST")
         .ok()
@@ -69,6 +72,12 @@ pub fn gather_context() -> Context {
     }
 }
 
+#[cfg(windows)]
+fn is_executable(p: &Path) -> bool {
+    p.is_file()
+}
+
+#[cfg(unix)]
 fn is_executable(p: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     p.metadata()

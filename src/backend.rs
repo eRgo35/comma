@@ -235,17 +235,28 @@ mod tests {
 
     #[test]
     fn run_with_timeout_returns_output() {
-        let mut cmd = Command::new("echo");
-        cmd.arg("hi");
+        let (mut cmd, want): (Command, &[u8]) = if cfg!(windows) {
+            (Command::new("cmd"), b"hi\r\n")
+        } else {
+            (Command::new("echo"), b"hi\n")
+        };
+        cmd.args(if cfg!(windows) {
+            &["/c", "echo hi"][..]
+        } else {
+            &["hi"][..]
+        });
         let out = run_with_timeout(cmd, Duration::from_secs(5)).unwrap();
-        assert_eq!(out.stdout, b"hi\n");
+        assert_eq!(out.stdout, want);
     }
 
     #[test]
     fn failure_line_prefers_stdout_then_last_stderr_line() {
-        use std::os::unix::process::ExitStatusExt;
+        #[cfg(unix)]
+        let status = std::os::unix::process::ExitStatusExt::from_raw(1 << 8);
+        #[cfg(windows)]
+        let status = std::os::windows::process::ExitStatusExt::from_raw(1);
         let out = |o: &str, e: &str| Output {
-            status: std::process::ExitStatus::from_raw(1 << 8),
+            status,
             stdout: o.into(),
             stderr: e.into(),
         };

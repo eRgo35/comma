@@ -1,3 +1,4 @@
+#![cfg(unix)]
 //! Tests the hook's line logic (`__comma_process`) against a stub `comma`,
 //! without readline. `p LINE` runs one Enter press and prints the resulting
 //! READLINE_LINE and __COMMA_HANDLED on two lines.

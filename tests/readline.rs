@@ -1,3 +1,4 @@
+#![cfg(unix)]
 //! End-to-end tests of the Enter binding in a real interactive bash (via a pty),
 //! with a stub `comma` that returns `$STUB_OUT` as the generated command.
 use std::fs;
