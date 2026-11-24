@@ -1,3 +1,4 @@
+use crate::prompt::Shell;
 use serde_json::Value;
 
 #[derive(Debug, PartialEq)]
@@ -10,7 +11,7 @@ pub enum Reply {
 }
 
 /// Parse the model's JSON reply. Tolerates code fences or prose around the object.
-pub fn parse_reply(raw: &str) -> Result<Reply, String> {
+pub fn parse_reply(raw: &str, shell: Shell) -> Result<Reply, String> {
     let (start, end) = match (raw.find('{'), raw.rfind('}')) {
         (Some(s), Some(e)) if s < e => (s, e),
         _ => return Err("model reply had no JSON".into()),
@@ -30,7 +31,7 @@ pub fn parse_reply(raw: &str) -> Result<Reply, String> {
             }
             let warning = Some(clean(&text("warning")))
                 .filter(|w| !w.is_empty())
-                .or_else(|| local_warning(&command).map(String::from));
+                .or_else(|| local_warning(&command, shell).map(String::from));
             Ok(Reply::Command { command, warning })
         }
         Some("answer") => Ok(Reply::Answer(clean(&text("text")))),
@@ -47,7 +48,7 @@ pub fn clean(s: &str) -> String {
 }
 
 /// A warning for clearly risky commands, used when the model gave none.
-fn local_warning(cmd: &str) -> Option<&'static str> {
+fn local_warning(cmd: &str, _shell: Shell) -> Option<&'static str> {
     // Blank out quoted text so `grep 'rm'` or `nu -c '... > 1mb'` don't count.
     let mut plain = String::new();
     let mut quote = None;
@@ -105,6 +106,10 @@ fn local_warning(cmd: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse_reply(raw: &str) -> Result<Reply, String> {
+        super::parse_reply(raw, Shell::Bash)
+    }
 
     #[test]
     fn parses_command() {
@@ -205,7 +210,7 @@ mod tests {
             ("sort a.txt > a.txt", "overwrites a file"),
             ("make 2> err.log", "overwrites a file"),
         ] {
-            assert_eq!(local_warning(cmd), Some(want), "{cmd}");
+            assert_eq!(local_warning(cmd, Shell::Bash), Some(want), "{cmd}");
         }
     }
 
@@ -221,7 +226,7 @@ mod tests {
             "ls | grep sh",
             "git status || true",
         ] {
-            assert_eq!(local_warning(cmd), None, "{cmd}");
+            assert_eq!(local_warning(cmd, Shell::Bash), None, "{cmd}");
         }
     }
 

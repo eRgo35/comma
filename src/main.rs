@@ -7,6 +7,7 @@ use std::io::{IsTerminal, Write};
 use std::process::ExitCode;
 
 const HOOK: &str = include_str!("hook.bash");
+const CLINK_HOOK: &str = include_str!("hook.lua");
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -20,9 +21,21 @@ fn main() -> ExitCode {
             print!("{HOOK}");
             ExitCode::SUCCESS
         }
+        ["init", "cmd"] => {
+            print!("{CLINK_HOOK}");
+            ExitCode::SUCCESS
+        }
         ["ask", request] => ask(request),
+        // The Clink hook passes the request in COMMA_REQUEST, never on a cmd command line.
+        ["ask"] => match std::env::var("COMMA_REQUEST") {
+            Ok(r) if !r.is_empty() => ask(&r),
+            _ => {
+                eprintln!("comma: no request");
+                ExitCode::from(1)
+            }
+        },
         _ => {
-            eprintln!("usage: comma init bash | comma ask <request>");
+            eprintln!("usage: comma init bash|cmd | comma ask [<request>]");
             ExitCode::from(1)
         }
     }
@@ -30,7 +43,14 @@ fn main() -> ExitCode {
 
 /// Exit 0: command on stdout. Exit 2: answer printed to stderr. Exit 1: error.
 fn ask(request: &str) -> ExitCode {
-    let ctx = prompt::gather_context();
+    let shell = match prompt::shell_from_env(std::env::var("COMMA_SHELL").ok().as_deref()) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("comma: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let ctx = prompt::gather_context(shell);
     let msg = prompt::user_message(request, &ctx);
 
     let spinner = std::io::stderr().is_terminal();
@@ -38,8 +58,8 @@ fn ask(request: &str) -> ExitCode {
         eprint!("thinking…");
         let _ = std::io::stderr().flush();
     }
-    let result =
-        backend::complete(prompt::SYSTEM_PROMPT, &msg).and_then(|raw| reply::parse_reply(&raw));
+    let result = backend::complete(prompt::system_prompt(shell), &msg)
+        .and_then(|raw| reply::parse_reply(&raw, shell));
     if spinner {
         eprint!("\r\x1b[2K");
     }

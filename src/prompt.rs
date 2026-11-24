@@ -1,7 +1,30 @@
 use std::env;
 use std::path::Path;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Shell {
+    Bash,
+    Cmd,
+}
+
+/// `COMMA_SHELL`, set by the hook: unset or "bash" for bash, "cmd" for cmd + Clink.
+pub fn shell_from_env(v: Option<&str>) -> Result<Shell, String> {
+    match v {
+        None | Some("") | Some("bash") => Ok(Shell::Bash),
+        Some("cmd") => Ok(Shell::Cmd),
+        Some(other) => Err(format!("unknown COMMA_SHELL: {other}")),
+    }
+}
+
+pub fn system_prompt(shell: Shell) -> &'static str {
+    match shell {
+        Shell::Bash => BASH_PROMPT,
+        Shell::Cmd => CMD_PROMPT,
+    }
+}
+
 pub struct Context {
+    pub shell: Shell,
     pub cwd: String,
     pub os: String,
     pub nu_available: bool,
@@ -9,7 +32,7 @@ pub struct Context {
     pub previous: Option<(String, String)>,
 }
 
-pub const SYSTEM_PROMPT: &str = r#"You are a bash assistant inside the user's terminal. The user types a short request; you reply with ONLY one JSON object and nothing else.
+pub const BASH_PROMPT: &str = r#"You are a bash assistant inside the user's terminal. The user types a short request; you reply with ONLY one JSON object and nothing else.
 
 If the user wants something done or listed, reply:
 {"kind":"command","command":"<command>","warning":null}
@@ -25,6 +48,24 @@ If the user asks a question, reply:
 
 If a previous request is given, the new request may refine it."#;
 
+pub const CMD_PROMPT: &str = r#"You are a cmd.exe assistant inside the user's Windows terminal. The user types a short request; you reply with ONLY one JSON object and nothing else.
+
+If the user wants something done or listed, reply:
+{"kind":"command","command":"<command>","warning":null}
+- The command must be a single line that is valid in cmd.exe.
+- It runs in the current directory (cwd); "here" means cwd, so use relative paths unless told otherwise.
+- Prefer cmd builtins and standard Windows tools (dir, findstr, where, robocopy, for /f).
+- Use `powershell -NoProfile -c "..."` only when cmd cannot do it cleanly.
+- Use `nu -c '...'` only when nushell is available and structured filtering is clearly simpler that way.
+- Keep it minimal: no added error suppression (2>nul, >nul) unless asked.
+- Set "warning" to a short reason (max 5 words) if the command deletes or overwrites files, needs elevation, touches the network, or pushes to a git remote. Otherwise null.
+
+If the user asks a question, reply:
+{"kind":"answer","text":"<answer>"}
+- The answer is brief: 1-5 short lines of plain text, no markdown.
+
+If a previous request is given, the new request may refine it."#;
+
 pub fn user_message(request: &str, ctx: &Context) -> String {
     let nu = if ctx.nu_available {
         "available"
@@ -32,6 +73,9 @@ pub fn user_message(request: &str, ctx: &Context) -> String {
         "not installed"
     };
     let mut m = format!("cwd: {}\nos: {}\nnushell: {nu}\n", ctx.cwd, ctx.os);
+    if ctx.shell == Shell::Cmd {
+        m.push_str("shell: cmd\n");
+    }
     if let Some((req, cmd)) = &ctx.previous {
         m.push_str(&format!(
             "Previous request: {req}\nPrevious command: {cmd}\n"
@@ -41,7 +85,7 @@ pub fn user_message(request: &str, ctx: &Context) -> String {
     m
 }
 
-pub fn gather_context() -> Context {
+pub fn gather_context(shell: Shell) -> Context {
     let cwd = env::current_dir()
         .map(|p| p.display().to_string())
         .unwrap_or_default();
@@ -65,6 +109,7 @@ pub fn gather_context() -> Context {
         .filter(|r| !r.is_empty())
         .map(|r| (r, env::var("COMMA_PREV_COMMAND").unwrap_or_default()));
     Context {
+        shell,
         cwd,
         os,
         nu_available,
@@ -91,6 +136,7 @@ mod tests {
 
     fn ctx(nu: bool, prev: Option<(&str, &str)>) -> Context {
         Context {
+            shell: Shell::Bash,
             cwd: "/home/u/proj".into(),
             os: "Fedora Linux 44".into(),
             nu_available: nu,
@@ -145,7 +191,51 @@ mod tests {
             "current directory",
             "error suppression",
         ] {
-            assert!(SYSTEM_PROMPT.contains(s), "missing {s}");
+            assert!(BASH_PROMPT.contains(s), "missing {s}");
         }
+    }
+
+    #[test]
+    fn shell_from_env_parses() {
+        assert_eq!(shell_from_env(None), Ok(Shell::Bash));
+        assert_eq!(shell_from_env(Some("")), Ok(Shell::Bash));
+        assert_eq!(shell_from_env(Some("bash")), Ok(Shell::Bash));
+        assert_eq!(shell_from_env(Some("cmd")), Ok(Shell::Cmd));
+        assert!(shell_from_env(Some("zsh")).unwrap_err().contains("zsh"));
+    }
+
+    #[test]
+    fn user_message_marks_cmd_shell() {
+        let cmd = Context {
+            shell: Shell::Cmd,
+            ..ctx(false, None)
+        };
+        assert!(user_message("x", &cmd).contains("shell: cmd"));
+        assert!(!user_message("x", &ctx(false, None)).contains("\nshell:"));
+    }
+
+    #[test]
+    fn cmd_prompt_pins_format() {
+        for s in [
+            "\"kind\"",
+            "command",
+            "answer",
+            "warning",
+            "single line",
+            "cmd.exe",
+            "powershell -NoProfile -c",
+            "nu -c",
+            "no markdown",
+            "current directory",
+            "error suppression",
+        ] {
+            assert!(CMD_PROMPT.contains(s), "missing {s}");
+        }
+    }
+
+    #[test]
+    fn bash_prompt_unchanged() {
+        assert_eq!(system_prompt(Shell::Bash), BASH_PROMPT);
+        assert_eq!(system_prompt(Shell::Cmd), CMD_PROMPT);
     }
 }
