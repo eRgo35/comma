@@ -48,8 +48,17 @@ Requires [Clink](https://github.com/chrisant996/clink) 1.2.46 or newer. Download
 Then create `%LOCALAPPDATA%\clink\comma.lua` (Clink's scripts folder; `clink info` shows yours) with:
 
 ```lua
-local f = io.popen("comma init cmd 2>nul")
-if f then local s = f:read("*a"); f:close(); if s ~= "" then load(s, "comma")() end end
+-- Run comma.exe from PATH by full path: cmd would also look in the current directory.
+for dir in (os.getenv("PATH") or ""):gmatch("[^;]+") do
+    local exe = path.join((dir:gsub('"', "")), "comma.exe")
+    if os.isfile(exe) then
+        local f = io.popen('2>nul "' .. exe .. '" init cmd')
+        local s = f and f:read("*a") or ""
+        if f then f:close() end
+        if s ~= "" then load(s, "comma")() end
+        break
+    end
+end
 ```
 
 Open a new cmd and try `,list files here`.

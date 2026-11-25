@@ -13,17 +13,38 @@ local VARS = {
     "COMMA_PREV_REQUEST", "COMMA_PREV_COMMAND", "COMMA_HISTLINE",
 }
 local prev_request, prev_command = "", ""
-local original = {}
+local original = {} -- original[keymap][key]
+local ENTER_KEYS = { [["\r"]], [["\n"]] } -- Enter and Ctrl-J
+
+-- Full path of comma from PATH. `cmd /c comma` would also look in the current
+-- directory first, so a comma.bat in a cloned repo would run, with the key.
+local function find_comma()
+    local exts = os.getenv("PATHEXT") or ".COM;.EXE;.BAT;.CMD"
+    for dir in (os.getenv("PATH") or ""):gmatch("[^;]+") do
+        dir = dir:gsub('"', "")
+        for ext in exts:gmatch("[^;]+") do
+            local p = path.join(dir, "comma" .. ext)
+            if os.isfile(p) then
+                return p
+            end
+        end
+    end
+end
 
 -- Everything reaches comma through the environment: io.popen runs its command
 -- line through cmd, which would act on "&", ">", "%VAR%" in the request.
 local function ask(line)
+    local exe = find_comma()
+    if not exe then
+        error("comma not found on PATH", 0)
+    end
     os.setenv("COMMA_REQUEST", line:sub(2))
     os.setenv("COMMA_SHELL", "cmd")
     os.setenv("COMMA_PREV_REQUEST", prev_request)
     os.setenv("COMMA_PREV_COMMAND", prev_command)
     os.setenv("COMMA_API_KEY", key)
-    local f = io.popen("comma ask")
+    -- Leading "<nul" so the line doesn't start with a quote, which cmd /c strips.
+    local f = io.popen('<nul "' .. exe .. '" ask')
     local out = f:read("*a")
     local _, _, code = f:close()
     return out, code
@@ -49,11 +70,11 @@ local function set_line(rl_buffer, text)
     rl_buffer:endundogroup()
 end
 
-function comma_enter(rl_buffer)
+local function comma_enter(rl_buffer, key)
     local line = rl_buffer:getbuffer()
     if line:sub(1, 1) ~= "," then
         local mode = rl.getvariable("editing-mode") == "vi" and "vi-insert" or "emacs"
-        rl.invokecommand(original[mode] or "accept-line")
+        rl.invokecommand(original[mode][key] or "accept-line")
         return
     end
     if line:sub(2):match("^%s*$") then
@@ -79,13 +100,25 @@ function comma_enter(rl_buffer)
     rl_buffer:refreshline()
 end
 
+function comma_enter_cr(rl_buffer)
+    comma_enter(rl_buffer, ENTER_KEYS[1])
+end
+
+function comma_enter_lf(rl_buffer)
+    comma_enter(rl_buffer, ENTER_KEYS[2])
+end
+
 -- Readline bindings outlive a script reload; don't save our own binding as the
 -- "original", or Enter would call itself.
+local funcs = { [["luafunc:comma_enter_cr"]], [["luafunc:comma_enter_lf"]] }
 for _, m in ipairs({ "emacs", "vi-insert", "vi-command" }) do
-    local b = rl.getbinding([["\r"]], m)
-    if not b or b:find("luafunc:comma_enter", 1, true) then
-        b = "accept-line"
+    original[m] = {}
+    for i, k in ipairs(ENTER_KEYS) do
+        local b = rl.getbinding(k, m)
+        if not b or b:find("luafunc:comma_enter", 1, true) then
+            b = "accept-line"
+        end
+        original[m][k] = b
+        rl.setbinding(k, funcs[i], m)
     end
-    original[m] = b
-    rl.setbinding([["\r"]], [["luafunc:comma_enter"]], m)
 end

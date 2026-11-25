@@ -26,13 +26,22 @@ struct Opts {
     rc: u8,
     vi: bool,
     stub: bool,
+    /// Another Clink script, loaded before comma.lua (scripts load by name).
+    other_script: Option<&'static str>,
+    /// A `comma.cmd` in the current directory, which must never be run.
+    planted: bool,
 }
 
 const DEFAULT: Opts = Opts {
     rc: 0,
     vi: false,
     stub: true,
+    other_script: None,
+    planted: false,
 };
+
+const PLANTED: &str =
+    "@echo off\r\n>\"%STUB_LOG%.planted\" echo PLANTED\r\necho echo PLANTED-RAN\r\n";
 
 struct Run {
     /// Output of each chunk, in order.
@@ -79,6 +88,12 @@ fn drive(name: &str, o: Opts, keys: &[&str]) -> Option<Run> {
     fs::write(profile.join("comma.lua"), &hook.stdout).unwrap();
     if o.vi {
         fs::write(profile.join("clink_inputrc"), "set editing-mode vi\n").unwrap();
+    }
+    if let Some(script) = o.other_script {
+        fs::write(profile.join("aaa_other.lua"), script).unwrap();
+    }
+    if o.planted {
+        fs::write(cwd.join("comma.cmd"), PLANTED).unwrap();
     }
     fs::write(bin.join("comma.cmd"), STUB).unwrap();
     let log = dir.join("log");
@@ -292,4 +307,51 @@ fn clink_comma_missing_leaves_line_and_enter_still_works() {
         !all.contains("'x' is not recognized"),
         "cmd ran the line: {all}"
     );
+}
+
+/// Ctrl-J is accept-line too; without the hook cmd would run `,del x` as `del x`.
+/// A plain "\n" doesn't reach Clink as Ctrl-J through ConPTY, so send the key
+/// as a win32-input-mode event (VK_J, Ctrl held), down then up.
+const CTRL_J: &str = "\x1b[74;36;10;1;8;1_\x1b[74;36;10;0;8;1_";
+
+#[test]
+fn clink_ctrl_j_goes_through_hook() {
+    let Some(r) = drive("ctrlj", DEFAULT, &[",say hi", CTRL_J, "\r"]) else {
+        return;
+    };
+    assert!(r.log.contains("COMMA_REQUEST=say hi\r\n"), "{}", r.log);
+    assert!(!r.chunks[1].contains(GEN_RAN), "ran early: {}", r.chunks[1]);
+    assert!(r.chunks[2].contains(GEN_RAN), "{}", r.chunks[2]);
+}
+
+/// Another script bound Enter to its own luafunc before comma loaded.
+#[test]
+fn clink_enter_works_with_other_script_binding() {
+    let other = "function other_enter(rl_buffer) rl.invokecommand(\"accept-line\") end\n\
+                 rl.setbinding([[\"\\r\"]], [[\"luafunc:other_enter\"]], \"emacs\")\n";
+    let o = Opts {
+        other_script: Some(other),
+        ..DEFAULT
+    };
+    let Some(r) = drive("other", o, &["set /a 40000+2\r", ",go", "\r", "\r"]) else {
+        return;
+    };
+    assert!(r.chunks[0].contains("40002"), "{}", r.chunks[0]);
+    assert!(r.chunks[3].contains(GEN_RAN), "{}", r.chunks[3]);
+}
+
+/// cmd looks in the current directory before PATH; the hook must run the
+/// comma found on PATH, never a comma.cmd that happens to be in cwd.
+#[test]
+fn clink_ignores_comma_in_current_dir() {
+    let o = Opts {
+        planted: true,
+        ..DEFAULT
+    };
+    let Some(r) = drive("planted", o, &[",go", "\r"]) else {
+        return;
+    };
+    assert!(r.log.contains("COMMA_REQUEST=go"), "{}", r.log);
+    assert!(!r.cwd.parent().unwrap().join("log.planted").exists());
+    assert!(r.chunks[1].contains(GEN), "{}", r.chunks[1]);
 }
