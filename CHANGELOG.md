@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.0](https://github.com/eRgo35/comma/compare/comma-v0.3.0...comma-v0.4.0) (2026-11-25)
+
+
+### Bug Fixes
+
+* bash risk check sees $(...) and backticks inside double quotes ([4b572fd](https://github.com/eRgo35/comma/commit/4b572fd7a1ae34e2f41ae080d03b33fc08f9222d))
+* read claude's output while it runs so a long reply can't stall the fallback ([93c8083](https://github.com/eRgo35/comma/commit/93c8083f6353f843f0b6aab6de98dce9bd8a5c44))
+* run the claude fallback without MCP servers, settings, hooks or saved sessions ([c8e7bde](https://github.com/eRgo35/comma/commit/c8e7bde7baa79b2ba010278fb23fc90e3cb20aca))
+
 ## [0.3.0](https://github.com/eRgo35/comma/compare/comma-v0.2.0...comma-v0.3.0) (2026-11-25)
 
 
