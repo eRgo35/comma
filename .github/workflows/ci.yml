@@ -42,6 +42,10 @@ jobs:
           $setup = Get-ChildItem $env:RUNNER_TEMP -Filter "*_setup.exe" | Select-Object -First 1
           Start-Process -Wait -FilePath $setup.FullName -ArgumentList "/S"
           python -m pip install pywinpty
+          # tests/clink.rs skips silently without these, so fail here instead.
+          if (-not (Test-Path 'C:\Program Files (x86)\clink\clink_x64.exe')) { throw "Clink not installed" }
+          python -I -c "import winpty"
+          if ($LASTEXITCODE -ne 0) { throw "pywinpty not importable" }
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test

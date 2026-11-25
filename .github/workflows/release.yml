@@ -34,6 +34,8 @@ jobs:
             runner: ubuntu-24.04-arm
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
+            # Static CRT so comma.exe runs without the VC++ redistributable.
+            rustflags: -C target-feature=+crt-static
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
@@ -45,6 +47,8 @@ jobs:
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - run: cargo build --release --locked --target ${{ matrix.target }}
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
       - name: Package and upload
         if: runner.os == 'Linux'
         env:
