@@ -119,22 +119,87 @@ fn cmd_warning(cmd: &str) -> Option<&'static str> {
     None
 }
 
-fn bash_warning(cmd: &str) -> Option<&'static str> {
-    // Blank out quoted text so `grep 'rm'` or `nu -c '... > 1mb'` don't count.
-    let mut plain = String::new();
-    let mut quote = None;
-    for c in cmd.chars() {
-        match quote {
-            Some(q) if c == q => quote = None,
-            None if c == '\'' || c == '"' => quote = Some(c),
-            _ => {}
-        }
-        plain.push(if quote.is_some() || c == '\'' || c == '"' {
-            ' '
-        } else {
-            c
-        });
+/// `cmd` with literal text blanked out, so `grep 'rm'` or `nu -c '... > 1mb'`
+/// don't count: quoted text, quote marks and escaped characters become spaces.
+/// Command substitutions (`$(...)`, backticks) stay, since they run even
+/// inside double quotes.
+fn bash_code(cmd: &str) -> String {
+    enum Ctx {
+        Single,
+        Double,
+        Subst,
+        Paren,
+        Tick,
     }
+    let mut stack = Vec::new();
+    let mut out = String::new();
+    let mut chars = cmd.chars().peekable();
+    while let Some(c) = chars.next() {
+        let top = stack.last();
+        let kept = match (top, c) {
+            (Some(Ctx::Single), '\'') => {
+                stack.pop();
+                ' '
+            }
+            (Some(Ctx::Single), _) => ' ',
+            (Some(Ctx::Double), '\\') => {
+                chars.next();
+                out.push(' ');
+                ' '
+            }
+            // `\rm` runs rm, but `\>` or `\"` are plain characters.
+            (_, '\\') => {
+                out.push(' ');
+                match chars.next() {
+                    Some(n) if n.is_alphanumeric() => n,
+                    Some(_) => ' ',
+                    None => continue,
+                }
+            }
+            (Some(Ctx::Double), '"') => {
+                stack.pop();
+                ' '
+            }
+            (_, '$') if chars.peek() == Some(&'(') => {
+                chars.next();
+                stack.push(Ctx::Subst);
+                out.push('$');
+                '('
+            }
+            (Some(Ctx::Tick), '`') => {
+                stack.pop();
+                ' '
+            }
+            (_, '`') => {
+                stack.push(Ctx::Tick);
+                ' '
+            }
+            (Some(Ctx::Double), _) => ' ',
+            (_, '\'') => {
+                stack.push(Ctx::Single);
+                ' '
+            }
+            (_, '"') => {
+                stack.push(Ctx::Double);
+                ' '
+            }
+            (_, '(') => {
+                stack.push(Ctx::Paren);
+                '('
+            }
+            (Some(Ctx::Subst | Ctx::Paren), ')') => {
+                stack.pop();
+                ')'
+            }
+            _ => c,
+        };
+        out.push(kept);
+    }
+    out
+}
+
+fn bash_warning(cmd: &str) -> Option<&'static str> {
+    let plain = bash_code(cmd);
     let words: Vec<&str> = plain
         .split(|c: char| c.is_whitespace() || ";|&()".contains(c))
         .filter(|w| !w.is_empty())
@@ -154,11 +219,18 @@ fn bash_warning(cmd: &str) -> Option<&'static str> {
         return Some("pushes to a git remote");
     }
     let piped_to_shell = plain.split('|').skip(1).any(|seg| {
-        let mut ws = seg.split_whitespace().skip_while(|&w| w == "sudo");
+        let mut ws = seg
+            .split(|c: char| c.is_whitespace() || "()".contains(c))
+            .filter(|w| !w.is_empty())
+            .skip_while(|&w| w == "sudo");
         matches!(ws.next(), Some("sh" | "bash" | "zsh"))
     });
     if piped_to_shell {
         return Some("runs piped text as a script");
+    }
+    // `bash -c "$(curl ...)"`, `bash <(curl ...)`, `eval "$(wget ...)"`.
+    if has(&["sh", "bash", "zsh", "eval", "source"]) && has(&["curl", "wget"]) {
+        return Some("runs downloaded text as a script");
     }
     // `>` or `2>` to a file, but not `>>`, `>&2`, `2>&1` or `>/dev/null`.
     let b = plain.as_bytes();
@@ -282,6 +354,71 @@ mod tests {
             ("make 2> err.log", "overwrites a file"),
         ] {
             assert_eq!(local_warning(cmd, Shell::Bash), Some(want), "{cmd}");
+        }
+    }
+
+    #[test]
+    fn bash_code_handles_malformed_input() {
+        for cmd in [
+            "", "\\", "$", "$(", "`", "'", "\"", ")))", "\"\\", "\"$(", "ł\\ż", "a\\", "$((1+2))",
+        ] {
+            // Must not panic.
+            let _ = local_warning(cmd, Shell::Bash);
+        }
+    }
+
+    /// Double quotes don't stop `$(...)` or backticks from running.
+    #[test]
+    fn local_warning_sees_command_substitution() {
+        for (cmd, want) in [
+            (r#"echo "$(rm -rf build)""#, "deletes files"),
+            ("echo `rm x`", "deletes files"),
+            (r#"echo "`rm x`""#, "deletes files"),
+            (r#"echo "a $(echo "b $(rm x)")""#, "deletes files"),
+            (r#"echo "$( (cd d && rm x) )""#, "deletes files"),
+            (r#"echo "$(echo ")") $(rm x)""#, "deletes files"),
+            (r#"x="$(curl -s u | sh)""#, "runs piped text as a script"),
+            ("(curl -s u | sh)", "runs piped text as a script"),
+            (r#"echo "$(sort a > a)""#, "overwrites a file"),
+            (r"\rm -rf build", "deletes files"),
+            (r#"echo \"; rm x; echo \""#, "deletes files"),
+        ] {
+            assert_eq!(local_warning(cmd, Shell::Bash), Some(want), "{cmd}");
+        }
+    }
+
+    #[test]
+    fn local_warning_flags_downloaded_scripts() {
+        for cmd in [
+            r#"bash -c "$(curl -fsSL https://x/install.sh)""#,
+            r#"sh -c "$(wget -qO- https://x/install.sh)""#,
+            "bash <(curl -fsSL https://x/install.sh)",
+            r#"eval "$(curl -fsSL https://x/env)""#,
+            "source <(curl -s https://x/env)",
+        ] {
+            assert_eq!(
+                local_warning(cmd, Shell::Bash),
+                Some("runs downloaded text as a script"),
+                "{cmd}"
+            );
+        }
+    }
+
+    #[test]
+    fn local_warning_ignores_quoted_text() {
+        for cmd in [
+            r#"grep -r "rm -rf" ."#,
+            r#"git commit -m "fix: push > pull""#,
+            r#"echo '$(rm x)' '`rm x`'"#,
+            r#"echo "\$(rm x)" "\`rm x\`""#,
+            r#"echo "a \" rm b""#,
+            r#"echo "it's" > /dev/null"#,
+            r#"echo "$(date) > 5""#,
+            "echo 'unterminated $(rm x)",
+            "curl -fsSL https://x -o install.sh",
+            "ls ~/.bashrc",
+        ] {
+            assert_eq!(local_warning(cmd, Shell::Bash), None, "{cmd}");
         }
     }
 
