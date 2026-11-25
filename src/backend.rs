@@ -1,5 +1,8 @@
 use serde_json::{Value, json};
+use std::io::Read;
 use std::process::{Command, Output, Stdio};
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -127,6 +130,21 @@ fn failure_line(out: &Output) -> String {
         .unwrap_or_else(|| format!("exit status {}", out.status))
 }
 
+/// Read `pipe` to the end on its own thread and send `(index, bytes)`.
+fn read_in_background<R: Read + Send + 'static>(
+    pipe: Option<R>,
+    index: usize,
+    tx: mpsc::Sender<(usize, Vec<u8>)>,
+) {
+    thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut p) = pipe {
+            let _ = p.read_to_end(&mut buf);
+        }
+        let _ = tx.send((index, buf));
+    });
+}
+
 /// Run `cmd` capturing its output, killing it after `limit`.
 fn run_with_timeout(mut cmd: Command, limit: Duration) -> Result<Output, BackendError> {
     let mut child = cmd
@@ -135,21 +153,38 @@ fn run_with_timeout(mut cmd: Command, limit: Duration) -> Result<Output, Backend
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| BackendError::Other(format!("could not run claude: {e}")))?;
-    let start = Instant::now();
-    while child.try_wait().ok().flatten().is_none() {
-        if start.elapsed() >= limit {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(BackendError::Other(format!(
-                "claude timed out after {}s",
-                limit.as_secs()
-            )));
+    let deadline = Instant::now() + limit;
+    let timed_out = |child: &mut std::process::Child| {
+        let _ = child.kill();
+        let _ = child.wait();
+        BackendError::Other(format!("claude timed out after {}s", limit.as_secs()))
+    };
+    // Read both pipes while the child runs: a child whose output fills a pipe
+    // buffer blocks until it is read, and would never exit.
+    let (tx, rx) = mpsc::channel();
+    read_in_background(child.stdout.take(), 0, tx.clone());
+    read_in_background(child.stderr.take(), 1, tx);
+    let mut bufs = [Vec::new(), Vec::new()];
+    for _ in 0..2 {
+        match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok((i, buf)) => bufs[i] = buf,
+            Err(_) => return Err(timed_out(&mut child)),
         }
-        std::thread::sleep(Duration::from_millis(50));
     }
-    child
-        .wait_with_output()
-        .map_err(|e| BackendError::Other(format!("could not run claude: {e}")))
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+            Ok(None) => return Err(timed_out(&mut child)),
+            Err(e) => return Err(BackendError::Other(format!("could not run claude: {e}"))),
+        }
+    };
+    let [stdout, stderr] = bufs;
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 /// Ask the API, falling back to `claude -p`. Errors are short one-line strings.
@@ -255,6 +290,51 @@ mod tests {
         });
         let out = run_with_timeout(cmd, Duration::from_secs(5)).unwrap();
         assert_eq!(out.stdout, want);
+    }
+
+    /// More output than a pipe buffer holds (64 KiB on Linux, 4 KiB on
+    /// Windows) on stdout and stderr, which must be read while the child runs.
+    #[test]
+    fn run_with_timeout_reads_large_output() {
+        let file = std::env::temp_dir().join(format!("comma-big-{}.txt", std::process::id()));
+        let big = "0123456789abcdef".repeat(20_000);
+        std::fs::write(&file, &big).unwrap();
+        let f = file.display().to_string();
+        for to_stderr in [false, true] {
+            #[cfg(windows)]
+            let cmd = {
+                // raw_arg: Rust would escape the quotes as \", which cmd doesn't read.
+                use std::os::windows::process::CommandExt;
+                let mut cmd = Command::new("cmd");
+                let redirect = if to_stderr { " 1>&2" } else { "" };
+                cmd.arg("/c").raw_arg(format!("type \"{f}\"{redirect}"));
+                cmd
+            };
+            #[cfg(unix)]
+            let cmd = {
+                let mut cmd = Command::new("sh");
+                let redirect = if to_stderr { " >&2" } else { "" };
+                cmd.args(["-c", &format!("cat \"$0\"{redirect}"), &f]);
+                cmd
+            };
+            let out = run_with_timeout(cmd, Duration::from_secs(5)).unwrap();
+            let got = if to_stderr { &out.stderr } else { &out.stdout };
+            assert_eq!(got.len(), big.len(), "stderr: {to_stderr}");
+            assert!(out.status.success());
+        }
+        let _ = std::fs::remove_file(&file);
+    }
+
+    /// The child exits but a process it left behind keeps the pipe open:
+    /// still give up at the limit instead of waiting for it.
+    #[cfg(unix)]
+    #[test]
+    fn run_with_timeout_limit_holds_with_leftover_process() {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "sleep 5 & echo hi"]);
+        let start = Instant::now();
+        assert!(run_with_timeout(cmd, Duration::from_millis(300)).is_err());
+        assert!(start.elapsed() < Duration::from_secs(2));
     }
 
     #[test]
