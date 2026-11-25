@@ -85,8 +85,16 @@ pub fn call_claude_cli(system: &str, user: &str) -> Result<String, BackendError>
         "-p",
         "--model",
         "haiku",
+        // `--tools ""` only removes built-in tools. Also leave out the user's
+        // MCP servers (mail, files, desktop control, ...), and their settings,
+        // hooks and plugins, which add context and tools this one-line reply
+        // must not have. Don't save a session per request either.
         "--tools",
         "",
+        "--strict-mcp-config",
+        "--setting-sources",
+        "",
+        "--no-session-persistence",
         "--system-prompt",
         system,
         // So a request starting with "-" isn't read as a flag.
