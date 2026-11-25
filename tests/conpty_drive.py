@@ -1,7 +1,9 @@
 """Type keystrokes into a real cmd.exe with Clink through a ConPTY; print what it shows.
 
 Usage: python -I conpty_drive.py PROFILE_DIR CHUNK...
-Each CHUNK is sent, then output is read until the console goes quiet. Each
+Waits for the "<<<READY>>>" line a profile script prints once Clink has loaded
+its scripts. Each CHUNK is sent, then output is read until the console goes
+quiet. A CHUNK of the form "keys\x1ftext" also waits until text appears. Each
 chunk's output is preceded by a line "<<<CHUNK n>>>" so callers can tell which
 keystrokes produced what. ANSI/OSC sequences are stripped.
 Clink is taken from %CLINK_EXE%, else the default install path.
@@ -27,9 +29,9 @@ def reader():
             return
 threading.Thread(target=reader, daemon=True).start()
 
-def drain(quiet=1.5, limit=15.0):
+def drain(quiet=1.5, limit=15.0, want=""):
     out, end, last = "", time.time() + limit, time.time()
-    while time.time() < end and time.time() - last < quiet:
+    while time.time() < end and (time.time() - last < quiet or want not in clean(out)):
         try:
             s = q.get(timeout=0.05)
         except queue.Empty:
@@ -43,10 +45,11 @@ ansi = re.compile(r"\x1b\][^\x07\x1b]*(\x07|\x1b\\)|\x1b\[[0-9;?]*[ -/]*[@-~]|\x
 def clean(s):
     return ansi.sub("", s).replace("\r", "")
 
-out = clean(drain(quiet=3.0))
+out = clean(drain(quiet=1.0, limit=60.0, want="<<<READY>>>"))
 for i, c in enumerate(chunks, 1):
-    p.write(c)
-    out += f"\n<<<CHUNK {i}>>>\n" + clean(drain())
+    keys, _, want = c.partition("\x1f")
+    p.write(keys)
+    out += f"\n<<<CHUNK {i}>>>\n" + clean(drain(want=want))
 p.write("exit\r")
 drain(quiet=0.5, limit=3.0)
 if p.isalive():

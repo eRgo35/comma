@@ -86,6 +86,8 @@ fn drive(name: &str, o: Opts, keys: &[&str]) -> Option<Run> {
         .output()
         .unwrap();
     fs::write(profile.join("comma.lua"), &hook.stdout).unwrap();
+    // Loads after comma.lua; the driver sends no keys until it sees this.
+    fs::write(profile.join("zzz_ready.lua"), "print('<<<READY>>>')\n").unwrap();
     if o.vi {
         fs::write(profile.join("clink_inputrc"), "set editing-mode vi\n").unwrap();
     }
@@ -213,7 +215,11 @@ fn clink_error_leaves_line() {
 #[test]
 fn clink_key_hidden_from_children() {
     let ps = r#"powershell -NoProfile -c "'K=['+$env:COMMA_API_KEY+']'""#;
-    let Some(r) = drive("key", DEFAULT, &[",go", "\r", "\r", &format!("{ps}\r")]) else {
+    let Some(r) = drive(
+        "key",
+        DEFAULT,
+        &[",go", "\r", "\r", &format!("{ps}\r\x1fK=[]")],
+    ) else {
         return;
     };
     assert!(r.key.contains("COMMA_API_KEY=test-key"), "{}", r.key);
