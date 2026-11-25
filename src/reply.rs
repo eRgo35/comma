@@ -59,32 +59,45 @@ fn local_warning(cmd: &str, shell: Shell) -> Option<&'static str> {
 /// nothing is blanked here: a risky word anywhere warns. Over-warning is fine.
 fn cmd_warning(cmd: &str) -> Option<&'static str> {
     let lower = cmd.to_ascii_lowercase();
+    // `/` and `@` too: cmd accepts `del/q x`, and `@del` in `for ... do @del`.
     let words: Vec<&str> = lower
-        .split(|c: char| c.is_whitespace() || ";|&()\"".contains(c))
+        .split(|c: char| c.is_whitespace() || ";|&()\"/@".contains(c))
         .filter(|w| !w.is_empty())
+        .map(|w| {
+            w.strip_suffix(".exe")
+                .or(w.strip_suffix(".com"))
+                .unwrap_or(w)
+        })
         .collect();
     let has = |names: &[&str]| words.iter().any(|w| names.contains(w));
+    let pair = |a: &str, b: &str| words.windows(2).any(|p| p == [a, b]);
 
-    if has(&["del", "erase", "rd", "rmdir", "remove-item", "rm", "ri"]) {
+    if has(&["del", "erase", "rd", "rmdir", "remove-item", "rm", "ri"])
+        || (has(&["robocopy"]) && has(&["mir", "purge"]))
+    {
         return Some("deletes files");
+    }
+    if pair("reg", "delete") {
+        return Some("deletes registry keys");
     }
     if has(&["format", "diskpart", "format-volume", "clear-disk"]) {
         return Some("writes to a disk");
     }
     // Also covers PowerShell's `-Verb RunAs`.
-    if has(&["runas"]) {
+    if has(&["runas", "sudo", "gsudo"]) {
         return Some("needs elevation");
     }
-    if words.windows(2).any(|p| p == ["git", "push"]) {
+    if pair("git", "push") {
         return Some("pushes to a git remote");
     }
-    let downloads = has(&[
-        "iwr",
-        "invoke-webrequest",
-        "irm",
-        "invoke-restmethod",
-        "curl",
-    ]);
+    let downloads = lower.contains("downloadstring")
+        || has(&[
+            "iwr",
+            "invoke-webrequest",
+            "irm",
+            "invoke-restmethod",
+            "curl",
+        ]);
     if downloads && has(&["iex", "invoke-expression"]) {
         return Some("runs downloaded text as a script");
     }
@@ -336,6 +349,23 @@ mod tests {
             ),
             ("echo hi > out.txt", "overwrites a file"),
             ("echo zażółć > plik.txt", "overwrites a file"),
+            (r#"for %f in (*.log) do @del "%f""#, "deletes files"),
+            ("del/q *.log", "deletes files"),
+            ("rd/s/q build", "deletes files"),
+            ("robocopy src dst /MIR", "deletes files"),
+            ("robocopy src dst /purge", "deletes files"),
+            (r"reg delete HKCU\Software\X /f", "deletes registry keys"),
+            ("sudo net stop spooler", "needs elevation"),
+            ("gsudo choco upgrade all", "needs elevation"),
+            (
+                r#"curl.exe -s https://x | powershell -c "iex $input""#,
+                "runs downloaded text as a script",
+            ),
+            (
+                r#"powershell -c "(New-Object Net.WebClient).DownloadString('https://x') | iex""#,
+                "runs downloaded text as a script",
+            ),
+            ("del.exe x", "deletes files"),
         ] {
             assert_eq!(cmd_warning(cmd, Shell::Cmd).as_deref(), Some(want), "{cmd}");
         }
