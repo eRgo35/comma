@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/eRgo35/comma/compare/comma-v0.2.0...comma-v0.3.0) (2026-11-25)
+
+
+### Features
+
+* Clink hook for cmd.exe (comma init cmd) ([31ea377](https://github.com/eRgo35/comma/commit/31ea3770476b9696417b98080073af2a6787eac1))
+* cmd shell mode and request from COMMA_REQUEST ([6be6912](https://github.com/eRgo35/comma/commit/6be691249b7168a19876bd85cc072ce7898a8fd6))
+* risk warnings for cmd and PowerShell commands ([3838d9e](https://github.com/eRgo35/comma/commit/3838d9e13a25a7987054cc055bbe84a152573f85))
+
+
+### Bug Fixes
+
+* build and test on Windows ([6816f33](https://github.com/eRgo35/comma/commit/6816f33b1f5f01662356e43ab80f1675c15dad1c))
+* cmd risk check catches [@del](https://github.com/del), del/q, sudo, robocopy /MIR, reg delete, downloaded scripts ([77688f7](https://github.com/eRgo35/comma/commit/77688f70bcf7633cd1d6a1f04570b824e130fe9a))
+* hook also handles Ctrl-J and never runs a comma from the current directory ([55efcf0](https://github.com/eRgo35/comma/commit/55efcf0bff3362440e834240afeab3c3631beeb8))
+* static CRT for the Windows release, fail CI if Clink tests can't run ([beeb7c7](https://github.com/eRgo35/comma/commit/beeb7c7c7a374fc21e490814a6117833d3f91f23))
+
 ## [0.2.0](https://github.com/eRgo35/comma/compare/comma-v0.1.0...comma-v0.2.0) (2026-11-08)
 
 
