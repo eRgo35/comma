@@ -41,6 +41,26 @@ pub fn request_body(system: &str, user: &str) -> Value {
         "thinking": {"type": "disabled"},
         "system": system,
         "messages": [{"role": "user", "content": user}],
+        // Constrain the reply to the two shapes the system prompt asks for,
+        // so it is always one valid JSON object.
+        "output_config": {"format": {"type": "json_schema", "schema": reply_schema()}},
+    })
+}
+
+/// One flat object: with an `anyOf` of the two shapes the model only ever
+/// picked "answer". Unused fields come back empty, which the parser ignores.
+fn reply_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "kind": {"type": "string", "enum": ["command", "answer"]},
+            "command": {"type": "string"},
+            // Nullable, as in the system prompt: a plain string got "null".
+            "warning": {"type": ["string", "null"]},
+            "text": {"type": "string"},
+        },
+        "required": ["kind", "command", "warning", "text"],
+        "additionalProperties": false,
     })
 }
 
@@ -268,6 +288,16 @@ mod tests {
         assert_eq!(b["messages"][0]["content"], "USER");
         assert_eq!(b["max_tokens"], 400);
         assert_eq!(b["thinking"]["type"], "disabled");
+    }
+
+    #[test]
+    fn body_constrains_reply_to_both_kinds() {
+        let f = &request_body("SYS", "USER")["output_config"]["format"];
+        assert_eq!(f["type"], "json_schema");
+        assert_eq!(
+            f["schema"]["properties"]["kind"]["enum"],
+            json!(["command", "answer"])
+        );
     }
 
     #[test]
