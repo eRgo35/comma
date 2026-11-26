@@ -47,29 +47,20 @@ pub fn request_body(system: &str, user: &str) -> Value {
     })
 }
 
+/// One flat object: with an `anyOf` of the two shapes the model only ever
+/// picked "answer". Unused fields come back empty, which the parser ignores.
 fn reply_schema() -> Value {
     json!({
-        "anyOf": [
-            {
-                "type": "object",
-                "properties": {
-                    "kind": {"type": "string", "const": "command"},
-                    "command": {"type": "string"},
-                    "warning": {"type": ["string", "null"]},
-                },
-                "required": ["kind", "command", "warning"],
-                "additionalProperties": false,
-            },
-            {
-                "type": "object",
-                "properties": {
-                    "kind": {"type": "string", "const": "answer"},
-                    "text": {"type": "string"},
-                },
-                "required": ["kind", "text"],
-                "additionalProperties": false,
-            },
-        ]
+        "type": "object",
+        "properties": {
+            "kind": {"type": "string", "enum": ["command", "answer"]},
+            "command": {"type": "string"},
+            // Nullable, as in the system prompt: a plain string got "null".
+            "warning": {"type": ["string", "null"]},
+            "text": {"type": "string"},
+        },
+        "required": ["kind", "command", "warning", "text"],
+        "additionalProperties": false,
     })
 }
 
@@ -303,13 +294,10 @@ mod tests {
     fn body_constrains_reply_to_both_kinds() {
         let f = &request_body("SYS", "USER")["output_config"]["format"];
         assert_eq!(f["type"], "json_schema");
-        let kinds: Vec<&str> = f["schema"]["anyOf"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v["properties"]["kind"]["const"].as_str().unwrap())
-            .collect();
-        assert_eq!(kinds, ["command", "answer"]);
+        assert_eq!(
+            f["schema"]["properties"]["kind"]["enum"],
+            json!(["command", "answer"])
+        );
     }
 
     #[test]
