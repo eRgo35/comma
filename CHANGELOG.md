@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/eRgo35/comma/compare/comma-v0.4.0...comma-v0.5.0) (2026-11-26)
+
+
+### Features
+
+* ask the API for schema-constrained JSON replies ([#14](https://github.com/eRgo35/comma/issues/14)) ([4927615](https://github.com/eRgo35/comma/commit/492761565048b0a93470d50a0e7a35cd89fd09d3))
+* retry the API once on 429 or 5xx before falling back to claude -p ([#13](https://github.com/eRgo35/comma/issues/13)) ([b6614d8](https://github.com/eRgo35/comma/commit/b6614d887bef6c889158f5a6a48b0cc5bd422710)), closes [#10](https://github.com/eRgo35/comma/issues/10)
+
+
+### Performance Improvements
+
+* smaller release binary (strip, LTO, no gzip) ([#12](https://github.com/eRgo35/comma/issues/12)) ([f6dd002](https://github.com/eRgo35/comma/commit/f6dd00279a688e58724d87b88858fe85ec46f5c6)), closes [#11](https://github.com/eRgo35/comma/issues/11)
+
 ## [0.4.0](https://github.com/eRgo35/comma/compare/comma-v0.3.0...comma-v0.4.0) (2026-11-25)
 
 
