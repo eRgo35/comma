@@ -24,6 +24,7 @@ Both the `,…` request and the command actually run go into bash history.
 ## Backend
 
 - Direct Anthropic Messages API, model hardcoded to `claude-haiku-5-5`, key from `COMMA_API_KEY`. No config file.
+- Retry the API once after a short pause on 429 or 5xx.
 - Fall back to `claude -p` only when there is no key or the API returns an HTTP error status (401, 429, 5xx, …). No fallback on network failure or timeout.
 
 ## Context sent

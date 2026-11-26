@@ -11,6 +11,7 @@ const MODEL: &str = "claude-haiku-5-5";
 const KEY_ENV: &str = "COMMA_API_KEY";
 const API_TIMEOUT: Duration = Duration::from_secs(5);
 const CLI_TIMEOUT: Duration = Duration::from_secs(30);
+const RETRY_DELAY: Duration = Duration::from_millis(300);
 
 #[derive(Debug)]
 pub enum BackendError {
@@ -23,6 +24,12 @@ pub enum BackendError {
 /// Fall back to `claude -p` only when the API is unusable for a non-network reason.
 pub fn should_fallback(e: &BackendError) -> bool {
     matches!(e, BackendError::NoKey | BackendError::Http(..))
+}
+
+/// Rate limits, overload and server errors are often gone a moment later, and
+/// one more API call is much faster than starting `claude -p`.
+pub fn should_retry(e: &BackendError) -> bool {
+    matches!(e, BackendError::Http(s, _) if *s == 429 || *s >= 500)
 }
 
 pub fn request_body(system: &str, user: &str) -> Value {
@@ -190,7 +197,12 @@ fn run_with_timeout(mut cmd: Command, limit: Duration) -> Result<Output, Backend
 /// Ask the API, falling back to `claude -p`. Errors are short one-line strings.
 pub fn complete(system: &str, user: &str) -> Result<String, String> {
     let key = std::env::var(KEY_ENV).ok();
-    match call_api(key.as_deref(), system, user) {
+    let mut result = call_api(key.as_deref(), system, user);
+    if result.as_ref().is_err_and(should_retry) {
+        thread::sleep(RETRY_DELAY);
+        result = call_api(key.as_deref(), system, user);
+    }
+    match result {
         Ok(text) => Ok(text),
         Err(e) if should_fallback(&e) => call_claude_cli(system, user).map_err(|f| {
             format!(
@@ -227,6 +239,18 @@ mod tests {
         assert!(should_fallback(&BackendError::NoKey));
         assert!(should_fallback(&BackendError::Http(401, "".into())));
         assert!(should_fallback(&BackendError::Http(529, "".into())));
+    }
+
+    #[test]
+    fn retry_on_rate_limit_and_server_errors_only() {
+        for s in [429, 500, 529] {
+            assert!(should_retry(&BackendError::Http(s, "".into())), "{s}");
+        }
+        for s in [400, 401, 403, 404] {
+            assert!(!should_retry(&BackendError::Http(s, "".into())), "{s}");
+        }
+        assert!(!should_retry(&BackendError::NoKey));
+        assert!(!should_retry(&BackendError::Network("timeout".into())));
     }
 
     #[test]
