@@ -41,6 +41,35 @@ pub fn request_body(system: &str, user: &str) -> Value {
         "thinking": {"type": "disabled"},
         "system": system,
         "messages": [{"role": "user", "content": user}],
+        // Constrain the reply to the two shapes the system prompt asks for,
+        // so it is always one valid JSON object.
+        "output_config": {"format": {"type": "json_schema", "schema": reply_schema()}},
+    })
+}
+
+fn reply_schema() -> Value {
+    json!({
+        "anyOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "const": "command"},
+                    "command": {"type": "string"},
+                    "warning": {"type": ["string", "null"]},
+                },
+                "required": ["kind", "command", "warning"],
+                "additionalProperties": false,
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "const": "answer"},
+                    "text": {"type": "string"},
+                },
+                "required": ["kind", "text"],
+                "additionalProperties": false,
+            },
+        ]
     })
 }
 
@@ -268,6 +297,19 @@ mod tests {
         assert_eq!(b["messages"][0]["content"], "USER");
         assert_eq!(b["max_tokens"], 400);
         assert_eq!(b["thinking"]["type"], "disabled");
+    }
+
+    #[test]
+    fn body_constrains_reply_to_both_kinds() {
+        let f = &request_body("SYS", "USER")["output_config"]["format"];
+        assert_eq!(f["type"], "json_schema");
+        let kinds: Vec<&str> = f["schema"]["anyOf"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v["properties"]["kind"]["const"].as_str().unwrap())
+            .collect();
+        assert_eq!(kinds, ["command", "answer"]);
     }
 
     #[test]
