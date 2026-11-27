@@ -82,13 +82,25 @@ fn claude_fallback_runs_isolated() {
     )
     .unwrap();
     std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let o = bin()
-        .args(["ask", "-rf list files"])
-        .env_remove("COMMA_API_KEY")
-        .env_remove("COMMA_SHELL")
-        .env("PATH", &dir)
-        .output()
-        .unwrap();
+    // A child forked by another test thread while the stub was open for
+    // writing still holds it, so running it can briefly fail with ETXTBSY.
+    let run = || {
+        bin()
+            .args(["ask", "-rf list files"])
+            .env_remove("COMMA_API_KEY")
+            .env_remove("COMMA_SHELL")
+            .env("PATH", &dir)
+            .output()
+            .unwrap()
+    };
+    let mut o = run();
+    for _ in 0..20 {
+        if !String::from_utf8_lossy(&o.stderr).contains("Text file busy") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        o = run();
+    }
     assert_eq!(
         o.status.code(),
         Some(0),
