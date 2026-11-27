@@ -205,6 +205,13 @@ fn bash_warning(cmd: &str) -> Option<&'static str> {
         .filter(|w| !w.is_empty())
         .collect();
     let has = |names: &[&str]| words.iter().any(|w| names.contains(w));
+    let pair = |a: &str, b: &str| words.windows(2).any(|p| p == [a, b]);
+    // `-x`, also inside combined short flags (`-fdx`), or the long form.
+    let flag = |short: char, long: &str| {
+        words.iter().any(|w| {
+            *w == long || (w.starts_with('-') && !w.starts_with("--") && w.contains(short))
+        })
+    };
 
     if has(&["rm", "rmdir", "shred", "-delete"]) {
         return Some("deletes files");
@@ -215,8 +222,21 @@ fn bash_warning(cmd: &str) -> Option<&'static str> {
     if has(&["dd"]) || words.iter().any(|w| w.starts_with("mkfs")) {
         return Some("writes to a disk");
     }
-    if words.windows(2).any(|p| p == ["git", "push"]) {
+    if pair("git", "push") {
         return Some("pushes to a git remote");
+    }
+    if (pair("git", "reset") && has(&["--hard"])) || (pair("git", "clean") && flag('f', "--force"))
+    {
+        return Some("discards git changes");
+    }
+    if has(&["truncate"]) {
+        return Some("truncates files");
+    }
+    if has(&["chmod", "chown", "chgrp"]) && flag('R', "--recursive") {
+        return Some("changes permissions recursively");
+    }
+    if has(&["shutdown", "reboot", "poweroff", "halt"]) {
+        return Some("shuts down the machine");
     }
     let piped_to_shell = plain.split('|').skip(1).any(|seg| {
         let mut ws = seg
@@ -352,6 +372,18 @@ mod tests {
             ("curl -fsSL https://x.sh | sudo bash", "uses sudo"),
             ("sort a.txt > a.txt", "overwrites a file"),
             ("make 2> err.log", "overwrites a file"),
+            ("git reset --hard HEAD~1", "discards git changes"),
+            ("git clean -fdx", "discards git changes"),
+            ("git clean --force -d", "discards git changes"),
+            ("truncate -s 0 app.log", "truncates files"),
+            ("chmod -R 777 .", "changes permissions recursively"),
+            ("sudo chown -Rv me: dir", "uses sudo"),
+            (
+                "chown --recursive me: dir",
+                "changes permissions recursively",
+            ),
+            ("shutdown -h now", "shuts down the machine"),
+            ("systemctl reboot", "shuts down the machine"),
         ] {
             assert_eq!(local_warning(cmd, Shell::Bash), Some(want), "{cmd}");
         }
@@ -433,6 +465,10 @@ mod tests {
             "make > /dev/null 2>&1",
             "ls | grep sh",
             "git status || true",
+            "git reset HEAD~1",
+            "git clean -n",
+            "chmod +x run.sh",
+            "ls -R",
         ] {
             assert_eq!(local_warning(cmd, Shell::Bash), None, "{cmd}");
         }
