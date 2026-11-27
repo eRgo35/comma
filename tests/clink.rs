@@ -86,8 +86,15 @@ fn drive(name: &str, o: Opts, keys: &[&str]) -> Option<Run> {
         .output()
         .unwrap();
     fs::write(profile.join("comma.lua"), &hook.stdout).unwrap();
-    // Loads after comma.lua; the driver sends no keys until it sees this.
-    fs::write(profile.join("zzz_ready.lua"), "print('<<<READY>>>')\n").unwrap();
+    // The driver sends no keys until it sees this. Printed when Clink's editor
+    // takes the first line, not when scripts load: under load the first line
+    // was sometimes still read by plain cmd, so Enter ran `,x` as `x`.
+    fs::write(
+        profile.join("zzz_ready.lua"),
+        "local done\nclink.onbeginedit(function()\n\
+         if not done then done = true print('<<<READY>>>') end\nend)\n",
+    )
+    .unwrap();
     if o.vi {
         fs::write(profile.join("clink_inputrc"), "set editing-mode vi\n").unwrap();
     }
@@ -125,6 +132,12 @@ fn drive(name: &str, o: Opts, keys: &[&str]) -> Option<Run> {
         .output()
         .unwrap();
     let screen = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        out.status.success(),
+        "driver failed ({}):\n{}\n{screen}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
     let chunks = (1..=keys.len())
         .map(|i| {
             let start = screen

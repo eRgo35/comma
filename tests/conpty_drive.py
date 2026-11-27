@@ -1,8 +1,8 @@
 """Type keystrokes into a real cmd.exe with Clink through a ConPTY; print what it shows.
 
 Usage: python -I conpty_drive.py PROFILE_DIR CHUNK...
-Waits for the "<<<READY>>>" line a profile script prints once Clink has loaded
-its scripts. Each CHUNK is sent, then output is read until the console goes
+Waits for the "<<<READY>>>" line a profile script prints once Clink's editor
+starts on the first line. Each CHUNK is sent, then output is read until the console goes
 quiet. A CHUNK of the form "keys\x1ftext" also waits until text appears. Each
 chunk's output is preceded by a line "<<<CHUNK n>>>" so callers can tell which
 keystrokes produced what. ANSI/OSC sequences are stripped.
