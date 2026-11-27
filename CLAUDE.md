@@ -8,7 +8,7 @@ Bash (and cmd.exe + Clink) Enter hook + Rust binary: a line starting with `,` is
 - `src/hook.lua`: the Clink (cmd.exe) side, printed by `comma init cmd`. Binds Enter; passes everything to `comma ask` through env vars, never on a cmd command line.
 - `src/main.rs`: CLI (`init bash|cmd`, `ask [<request>]`). Contract for `ask`: exit 0 = command on stdout, 2 = answer printed to stderr, 1 = error printed to stderr. Only the command goes to stdout. With no argument the request comes from `COMMA_REQUEST`; `COMMA_SHELL` is `bash` (default) or `cmd` and picks the prompt and risk check.
 - `src/prompt.rs`: system prompt + per-request context (cwd, OS, nu availability, previous request from `COMMA_PREV_*` env).
-- `src/backend.rs`: Anthropic API via ureq (5s timeout, key from `COMMA_API_KEY`), falling back to `claude -p` only on missing key or HTTP error status, never on network failure.
+- `src/backend.rs`: Anthropic API via ureq (10s timeout, 3s to connect, key from `COMMA_API_KEY`), falling back to `claude -p` only on missing key or HTTP error status, never on network failure.
 - `src/reply.rs`: parses the model's JSON reply.
 - `tests/hook.rs`: `__comma_process` against a stub `comma`. `tests/readline.rs` + `tests/pty_drive.py`: real interactive bash through a pty (needs `python3`). Unix only.
 - `tests/clink.rs` + `tests/conpty_drive.py`: real cmd.exe + Clink through a ConPTY (Windows only; needs Clink and `pip install pywinpty`, skipped otherwise).
