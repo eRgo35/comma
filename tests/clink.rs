@@ -125,6 +125,12 @@ fn drive(name: &str, o: Opts, keys: &[&str]) -> Option<Run> {
         .output()
         .unwrap();
     let screen = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        out.status.success(),
+        "driver failed ({}):\n{}\n{screen}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
     let chunks = (1..=keys.len())
         .map(|i| {
             let start = screen
