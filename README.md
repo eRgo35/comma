@@ -71,7 +71,7 @@ C:\proj> powershell -NoProfile -c "Get-ChildItem -Recurse -Filter *.log | Where-
 - Commands are plain cmd when that works, `powershell -NoProfile -c "..."` when cmd can't do it cleanly, and `nu -c '...'` if nushell is installed.
 - The API key is optional. Without it comma uses `claude -p`, which it finds on `PATH` as `claude.exe` (the native installer or Scoop). An npm install of Claude Code (`claude.cmd`) is not found.
 - If you do set a key (`setx COMMA_API_KEY sk-ant-...`), note that `setx` puts it in the environment of every program you start (Explorer, editors, PowerShell). The hook clears it inside each cmd, so programs started from that cmd don't get it; only comma does. After a Clink script reload (Ctrl-X Ctrl-R), or in a cmd started from that cmd, the key is gone for that session and comma falls back to `claude -p`.
-- `,` lines go into Clink history, but quotes in them are dropped there.
+- `,` lines go into Clink history.
 - Works in emacs and vi editing modes. `( ... More?` continuation lines are never touched.
 
 ## How it works

@@ -241,10 +241,16 @@ fn clink_previous_request_passed() {
 
 #[test]
 fn clink_request_added_to_history() {
-    let Some(r) = drive("history", DEFAULT, &[",hist me", "\r", "\r", "history 5\r"]) else {
+    let keys = [r#",hist "me" & you"#, "\r", "\r", "history 5\r"];
+    let Some(r) = drive("history", DEFAULT, &keys) else {
         return;
     };
-    assert!(r.chunks[3].contains(",hist me"), "{}", r.chunks[3]);
+    // Quotes and all, as typed.
+    assert!(
+        r.chunks[3].contains(r#",hist "me" & you"#),
+        "{}",
+        r.chunks[3]
+    );
     assert!(r.chunks[3].contains(GEN), "{}", r.chunks[3]);
 }
 
