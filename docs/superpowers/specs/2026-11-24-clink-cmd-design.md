@@ -27,8 +27,7 @@ The author uses cmd.exe with Clink (in Windows Terminal) every day and wants the
 - `f:close()` returns `ok, "exit", code`, so the exit code is available. stderr from the child goes straight to the console, so answers, warnings and the spinner show.
 - Env clearing: `os.setenv(name, nil)` does **not** clear it as cmd's children see it. `os.setenv(name, "")` does: children see an empty value. comma already treats an empty key as missing.
 - `( ... More?` continuation lines are read by cmd itself, not Clink, so the hook never sees them. No equivalent of bash's `__COMMA_PRIMARY` is needed.
-- `"<CLINK_EXE>" --session <clink.getsession()> history add <line>` adds to the current session's history. Run via `cmd /d /v:on /c "... history add !COMMA_HISTLINE!"` so the line comes from an env var. The quotes in the line are lost (`"a"` becomes `a`).
-- Overhead of the two popens: about 0.15s.
+- History: Clink's Lua API can't add an arbitrary line, but inside the luafunc `rl.invokecommand("add-history")` adds the line in the buffer (quotes intact) and clears it, with no process start. (Originally `clink --session <id> history add`, which cost two popens, ~0.15s, and dropped quotes.)
 - Real Clink can be driven non-interactively through a ConPTY console (SSH provides one, and pywinpty does too).
 
 ## Approaches considered
@@ -78,7 +77,7 @@ At load: read `COMMA_API_KEY` into a local, then `os.setenv("COMMA_API_KEY", "")
 4. Set `COMMA_REQUEST`, `COMMA_SHELL=cmd`, `COMMA_PREV_REQUEST`, `COMMA_PREV_COMMAND`, and `COMMA_API_KEY` = the saved key.
 5. Run `io.popen("comma ask")`, read stdout, then `close()` to get the code.
 6. Immediately set `COMMA_API_KEY`, `COMMA_REQUEST`, `COMMA_SHELL` and the prev vars back to `""`.
-7. Add the `,` line to history via `clink history add` (constraint above).
+7. Add the `,` line to history via `add-history` (constraint above).
 8. Exit code 0: replace the line with the output and remember the prev request and command. Code 2: clear the line, prev request = request, prev command = "". Anything else: leave the line as typed.
 9. `refreshline()`.
 
@@ -93,7 +92,7 @@ local f = io.popen("comma init cmd 2>nul")
 if f then local s = f:read("*a"); f:close(); if s ~= "" then load(s, "comma")() end end
 ```
 
-The key is optional. The author uses no key on Windows, so `claude -p` is the main path there and must work. A user who sets one (`setx COMMA_API_KEY sk-ant-...`) gets it cleared inside each cmd session by the hook, so only comma gets it. Known limitation, documented and not fixed: after a Clink script reload, or in a cmd started from a hooked cmd, the hook sees the cleared value and comma falls back to `claude -p`. The user chose this over a registry fallback. README gets a "Windows (cmd + Clink)" install section, a short cmd example, a note that `,` request history loses quotes, and the key limitation.
+The key is optional. The author uses no key on Windows, so `claude -p` is the main path there and must work. A user who sets one (`setx COMMA_API_KEY sk-ant-...`) gets it cleared inside each cmd session by the hook, so only comma gets it. Known limitation, documented and not fixed: after a Clink script reload, or in a cmd started from a hooked cmd, the hook sees the cleared value and comma falls back to `claude -p`. The user chose this over a registry fallback. README gets a "Windows (cmd + Clink)" install section, a short cmd example, and the key limitation.
 
 Reloading the hook must not capture its own `luafunc:comma_enter` as the "original" binding (that would make Enter recurse). If the current binding is already `luafunc:comma_enter`, keep the previously saved original, or use `accept-line`.
 

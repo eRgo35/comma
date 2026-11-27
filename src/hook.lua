@@ -10,7 +10,7 @@ os.setenv("COMMA_API_KEY", "")
 
 local VARS = {
     "COMMA_API_KEY", "COMMA_REQUEST", "COMMA_SHELL",
-    "COMMA_PREV_REQUEST", "COMMA_PREV_COMMAND", "COMMA_HISTLINE",
+    "COMMA_PREV_REQUEST", "COMMA_PREV_COMMAND",
 }
 local prev_request, prev_command = "", ""
 local original = {} -- original[keymap][key]
@@ -50,19 +50,6 @@ local function ask(line)
     return out, code
 end
 
--- Delayed expansion (!VAR!) happens after cmd parses the line, so the text is
--- passed as-is (Clink's argument parsing still drops its quotes).
-local function add_history(line)
-    os.setenv("COMMA_HISTLINE", line)
-    local h = io.popen('2>&1 cmd /d /v:on /c ""' .. CLINK_EXE .. '" --session '
-        .. clink.getsession() .. ' history add !COMMA_HISTLINE!"')
-    if h then
-        h:read("*a")
-        h:close()
-    end
-    os.setenv("COMMA_HISTLINE", "")
-end
-
 local function set_line(rl_buffer, text)
     rl_buffer:beginundogroup()
     rl_buffer:remove(1, rl_buffer:getlength() + 1)
@@ -86,9 +73,12 @@ local function comma_enter(rl_buffer, key)
     for _, v in ipairs(VARS) do
         os.setenv(v, "")
     end
-    pcall(add_history, line)
+    -- Adds the line still in the buffer to history and clears it, in-process
+    -- (`clink history add` would cost two process starts and drop quotes).
+    rl.invokecommand("add-history")
     if not ok then
         print("comma: " .. tostring(out))
+        set_line(rl_buffer, line)
     elseif code == 0 then
         out = out:gsub("[\r\n]+$", "")
         set_line(rl_buffer, out)
@@ -96,7 +86,9 @@ local function comma_enter(rl_buffer, key)
     elseif code == 2 then
         set_line(rl_buffer, "")
         prev_request, prev_command = line:sub(2), ""
-    end -- any other code: error already printed, line left as typed
+    else -- error already printed; put the line back as typed
+        set_line(rl_buffer, line)
+    end
     rl_buffer:refreshline()
 end
 
