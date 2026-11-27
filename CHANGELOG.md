@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.1](https://github.com/eRgo35/comma/compare/comma-v0.5.0...comma-v0.5.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* add Clink history in-process, keeping quotes ([#22](https://github.com/eRgo35/comma/issues/22)) ([3e1f642](https://github.com/eRgo35/comma/commit/3e1f642d5658efa2112a98995967a8362072345a))
+* allow 10 s for an API request, 3 s to connect ([#21](https://github.com/eRgo35/comma/issues/21)) ([4a04596](https://github.com/eRgo35/comma/commit/4a045962cd29f6cd0c0271473bc5c8b2fc99ecde)), closes [#17](https://github.com/eRgo35/comma/issues/17)
+* bash risk check flags git reset --hard, git clean -f, truncate, recursive chmod/chown and shutdown ([#20](https://github.com/eRgo35/comma/issues/20)) ([f1f9040](https://github.com/eRgo35/comma/commit/f1f9040509808e0ea375c27cc99ca313c881365a)), closes [#19](https://github.com/eRgo35/comma/issues/19)
+
 ## [0.5.0](https://github.com/eRgo35/comma/compare/comma-v0.4.0...comma-v0.5.0) (2026-11-26)
 
 
