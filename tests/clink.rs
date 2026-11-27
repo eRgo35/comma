@@ -246,7 +246,11 @@ fn clink_request_added_to_history() {
         return;
     };
     // Quotes and all, as typed.
-    assert!(r.chunks[3].contains(r#",hist "me" & you"#), "{}", r.chunks[3]);
+    assert!(
+        r.chunks[3].contains(r#",hist "me" & you"#),
+        "{}",
+        r.chunks[3]
+    );
     assert!(r.chunks[3].contains(GEN), "{}", r.chunks[3]);
 }
 
