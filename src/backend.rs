@@ -9,7 +9,11 @@ const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const MODEL: &str = "claude-haiku-5-5";
 /// Own variable, so Claude Code does not pick the key up from ANTHROPIC_API_KEY.
 const KEY_ENV: &str = "COMMA_API_KEY";
-const API_TIMEOUT: Duration = Duration::from_secs(5);
+/// The whole request, generation included: ~2 s normally, more on a slow link.
+const API_TIMEOUT: Duration = Duration::from_secs(10);
+/// Name lookup, and connecting incl. the TLS handshake, each: so a dead
+/// network still fails fast.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const CLI_TIMEOUT: Duration = Duration::from_secs(30);
 const RETRY_DELAY: Duration = Duration::from_millis(300);
 
@@ -85,6 +89,8 @@ pub fn call_api(key: Option<&str>, system: &str, user: &str) -> Result<String, B
     let key = key.filter(|k| !k.is_empty()).ok_or(BackendError::NoKey)?;
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(API_TIMEOUT))
+        .timeout_resolve(Some(CONNECT_TIMEOUT))
+        .timeout_connect(Some(CONNECT_TIMEOUT))
         .http_status_as_error(false)
         .build()
         .into();

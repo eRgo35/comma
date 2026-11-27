@@ -33,7 +33,7 @@ cwd, OS, whether `nu` is available, the request, and the previous request + prod
 
 ## Failure
 
-Any failure: the line stays exactly as typed, a one-line error is printed, the shell is never blocked. API timeout ~5s; Ctrl-C cancels. If the binary is missing, the `.bashrc` eval is a no-op.
+Any failure: the line stays exactly as typed, a one-line error is printed, the shell is never blocked. API timeout 10s, 3s to connect; Ctrl-C cancels. If the binary is missing, the `.bashrc` eval is a no-op.
 
 ## Build
 

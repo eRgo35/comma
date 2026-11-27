@@ -86,7 +86,7 @@ C:\proj> powershell -NoProfile -c "Get-ChildItem -Recurse -Filter *.log | Where-
 
 ## Backend
 
-comma calls the Anthropic API directly with `claude-haiku-5-5` and a 5 second timeout, using `COMMA_API_KEY`. It deliberately does not read `ANTHROPIC_API_KEY`, so exporting the key does not change how Claude Code bills you.
+comma calls the Anthropic API directly with `claude-haiku-5-5` and a 10 second timeout (3 seconds to connect), using `COMMA_API_KEY`. It deliberately does not read `ANTHROPIC_API_KEY`, so exporting the key does not change how Claude Code bills you.
 
 A rate limit, overload or server error is retried once after a short pause. If no key is set, or the API still returns an error (bad key, rate limit, outage), comma falls back to the [Claude Code](https://claude.com/claude-code) CLI (`claude -p`) if you have it. The fallback works with your Claude subscription but takes a few seconds per request, and gives up after 30 seconds. It runs without your MCP servers, settings, hooks and plugins, so the model gets no tools and none of their context, and it doesn't save a session. Claude Code still adds some context of its own to each request, such as your account email.
 
